@@ -1,94 +1,126 @@
 # PoleStar-X
 
-**Sovereign fork of pi** — a self-configuring coding agent you own outright. See [docs/POLESTAR.md](docs/POLESTAR.md), [NOTICE.md](NOTICE.md), and [docs/superpowers/specs/2026-05-31-polestar-x-design.md](docs/superpowers/specs/2026-05-31-polestar-x-design.md). Run: `npm run polestar`.
-
----
-
-<p align="center">
-  <a href="https://pi.dev">
-    <img alt="pi logo" src="https://pi.dev/logo-auto.svg" width="128">
-  </a>
-</p>
-<p align="center">
-  <a href="https://discord.com/invite/3cU7Bz4UPx"><img alt="Discord" src="https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
-</p>
-<p align="center">
-  <a href="https://pi.dev">pi.dev</a> domain graciously donated by
-  <br /><br />
-  <a href="https://exe.dev"><img src="packages/coding-agent/docs/images/exy.png" alt="Exy mascot" width="48" /><br />exe.dev</a>
-</p>
-
-> New issues and PRs from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
----
-
-# Pi Agent Harness Mono Repo
-
-This is the home of the pi agent harness project including our self extensible coding agent.
-
-* **[@earendil-works/pi-coding-agent](packages/coding-agent)**: Interactive coding agent CLI
-* **[@earendil-works/pi-agent-core](packages/agent)**: Agent runtime with tool calling and state management
-* **[@earendil-works/pi-ai](packages/ai)**: Unified multi-provider LLM API (OpenAI, Anthropic, Google, …)
-
-To learn more about pi:
-
-* [Visit pi.dev](https://pi.dev), the project website with demos
-* [Read the documentation](https://pi.dev/docs/latest), but you can also ask the agent to explain itself
-
-## Share your OSS coding agent sessions
-
-If you use pi or other coding agents for open source work, please share your sessions.
-
-Public OSS session data helps improve coding agents with real-world tasks, tool use, failures, and fixes instead of toy benchmarks.
-
-For the full explanation, see [this post on X](https://x.com/badlogicgames/status/2037811643774652911).
-
-To publish sessions, use [`badlogic/pi-share-hf`](https://github.com/badlogic/pi-share-hf). Read its README.md for setup instructions. All you need is a Hugging Face account, the Hugging Face CLI, and `pi-share-hf`.
-
-You can also watch [this video](https://x.com/badlogicgames/status/2041151967695634619), where I show how I publish my `pi-mono` sessions.
-
-I regularly publish my own `pi-mono` work sessions here:
-
-- [badlogicgames/pi-mono on Hugging Face](https://huggingface.co/datasets/badlogicgames/pi-mono)
-
-## All Packages
-
-| Package | Description |
-|---------|-------------|
-| **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
-| **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
-| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
-| **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
-
-For Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [AGENTS.md](AGENTS.md) for project-specific rules (for both humans and agents).
-
-## Development
-
-```bash
-npm install --ignore-scripts  # Install all dependencies without running lifecycle scripts
-npm run build        # Build all packages
-npm run check        # Lint, format, and type check
-./test.sh            # Run tests (skips LLM-dependent tests without API keys)
-./pi-test.sh         # Run pi from sources (can be run from any directory)
+```
+██████╗  ██████╗ ██╗     ███████╗███████╗████████╗ █████╗ ██████╗      ██╗  ██╗
+██╔══██╗██╔═══██╗██║     ██╔════╝██╔════╝╚══██╔══╝██╔══██╗██╔══██╗     ╚██╗██╔╝
+██████╔╝██║   ██║██║     █████╗  ███████╗   ██║   ███████║██████╔╝█████╗╚███╔╝ 
+██╔═══╝ ██║   ██║██║     ██╔══╝  ╚════██║   ██║   ██╔══██║██╔══██╗╚════╝██╔██╗ 
+██║     ╚██████╔╝███████╗███████╗███████║   ██║   ██║  ██║██║  ██║     ██╔╝ ██╗
+╚═╝      ╚═════╝ ╚══════╝╚══════╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝     ╚═╝  ╚═╝
 ```
 
-## Supply-chain hardening
+**Sovereign fork of pi** — a self-configuring coding agent you own outright.
 
-We treat npm dependency changes as reviewed code changes.
+PoleStar-X is an opinionated, batteries-included middle ground between rigid enterprise tools and barebones pi. It configures itself, sits between your intent and execution, and ensures you remain in control of your agentic workflows.
 
-- Direct external dependencies are pinned to exact versions. Internal workspace packages remain version-ranged.
-- `.npmrc` sets `save-exact=true` and `min-release-age=2` to avoid same-day dependency releases during npm resolution.
-- `package-lock.json` is the dependency ground truth. Pre-commit blocks accidental lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1` is set.
-- `npm run check` verifies pinned direct deps, native TypeScript import compatibility, and the generated coding-agent shrinkwrap.
-- The published CLI package includes `packages/coding-agent/npm-shrinkwrap.json`, generated from the root lockfile, to pin transitive deps for npm users.
-- Release smoke tests use `npm run release:local` to build, pack, and create isolated npm and Bun installs outside the repo before tagging a release.
-- Local release installs, documented npm installs, and `pi update --self` use `--ignore-scripts` where supported.
-- CI installs with `npm ci --ignore-scripts`, and a scheduled GitHub workflow runs `npm audit --omit=dev` plus `npm audit signatures --omit=dev`.
-- Shrinkwrap generation has an explicit allowlist for dependency lifecycle scripts; new lifecycle-script deps fail checks until reviewed.
+---
+
+### Alternate Branding
+
+**Compact:**
+```
+  ___  ___  _    ___ ___ _____ _   ___   __  __
+ | _ \/ _ \| |  | __/ __|_   _/_\ | _ \__\ \/ /
+ |  _/ (_) | |__| _|\__ \ | |/ _ \|   /___>  <
+ |_|  \___/|____|___|___/ |_/_/ \_\_|_\  /_/\_\
+```
+
+**Tiny:**
+```
+  _   _      _  __ ___      _        
+ |_) / \ |  |_ (_   |  /\  |_) __ \/
+ |   \_/ |_ |_ __)  | /--\ | \    /\
+```
+
+---
+
+## Quick Start
+
+```bash
+npm install --ignore-scripts
+npm run build
+npm run polestar
+```
+
+For a full interactive session:
+```bash
+./pi-test.sh
+```
+
+---
+
+## Features & Product Differentiators
+
+### 1. Smart Model Router
+Kills "provider hell." PoleStar-X automatically classifies tasks and routes them to the most appropriate model based on difficulty, cost, and privacy sensitivity. Local models (Ollama/local) are automatically used for privacy-sensitive tasks.
+
+### 2. Self-Configuration Engine
+The agent extends itself. PoleStar-X can scaffold new skills, manage its own rules (`AGENTS.md`), and enable/disable its own tools within the same session.
+
+### 3. First-Class pi-memory
+Integrated cross-session work-journal and semantic retrieval. The agent remembers what you did, how you did it, and your preferred conventions across projects.
+
+### 4. Self-Healing Dev/Test Loop
+On lint, type, or test failure, PoleStar-X diagnoses the root cause and retries the implementation rather than blindly pivoting.
+
+---
+
+## Custom Tool Suite
+
+| Tool | Description |
+| --- | --- |
+| `glob` | Optimized file discovery with gitignore support |
+| `todowrite` | Structured task tracking and visualization |
+| `apply_patch` | Surgical code edits via unified diff format |
+| `webfetch` | Direct content retrieval from URLs |
+| `websearch` | Grounded search for up-to-date documentation |
+| `question` | Targeted clarification and choice gathering |
+| `manage_rule` | Dynamic agent rule management |
+| `task` | Multi-agent orchestration and background tasks |
+| `memory_search` | Semantic search through historical work |
+| `manage_skill` | Scaffold and load new SKILL.md documents |
+
+---
+
+## Interactive Commands
+
+| Command | Role |
+| --- | --- |
+| `/think` | Switch to read-only planning mode |
+| `/write` | Switch to implementation mode (default) |
+| `/tools` | List all active and registered tools |
+| `/hooks` | Inspect active lifecycle listeners |
+| `/mcp` | Manage and monitor running MCP servers |
+| `/remember` | Manually log a learning to long-term memory |
+| `/recall` | Search history for specific context |
+| `/init` | Bootstrap the `.polestar` configuration directory |
+
+---
+
+## Development & CI/CD
+
+### CI Pipeline
+Ensures code quality and structural integrity on every push and PR to `main`.
+- **Lint & Check**: Biome-driven formatting and type-checking.
+- **Build & Test**: Full workspace build and regression suite.
+
+### CD / Release Pipeline
+Automated versioning and binary distribution.
+- **Release**: Triggered via `workflow_dispatch` to bump versions, update changelogs, and tag.
+- **Build Binaries**: Triggered on tags to build multi-platform binaries and publish to npm.
+
+### Branch Protection
+The `main` branch is protected. All changes must go through PRs with mandatory reviews from Code Owners.
+
+---
+
+## Attribution & Licensing
+
+PoleStar-X preserves the MIT license and original copyright of **pi** (Mario Zechner). We also adopt and improve patterns from **Claude Code**, **gemini-cli**, and **OpenCode**.
+
+See [NOTICE.md](NOTICE.md) for the full Attribution Ledger.
+
+---
 
 ## License
 
