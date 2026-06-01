@@ -433,7 +433,12 @@ export class AgentSession {
 					"I've run this exact command 3 times. Continue?",
 				);
 				if (!confirmed) {
-					throw new Error("doom loop aborted");
+					await this.abort();
+					return {
+						content: [{ type: "text", text: "User aborted due to doom loop." }],
+						isError: true,
+						terminate: true,
+					};
 				}
 			}
 
@@ -620,7 +625,6 @@ export class AgentSession {
 		} else if (event.type === "agent_end") {
 			await this._extensionRunner.emit({ type: "agent_end", messages: event.messages });
 		} else if (event.type === "turn_start") {
-			this._toolCallCounts.clear();
 			const extensionEvent: TurnStartEvent = {
 				type: "turn_start",
 				turnIndex: this._turnIndex,
@@ -637,6 +641,9 @@ export class AgentSession {
 			await this._extensionRunner.emit(extensionEvent);
 			this._turnIndex++;
 		} else if (event.type === "message_start") {
+			if (event.message.role === "user") {
+				this._toolCallCounts.clear();
+			}
 			const extensionEvent: MessageStartEvent = {
 				type: "message_start",
 				message: event.message,
