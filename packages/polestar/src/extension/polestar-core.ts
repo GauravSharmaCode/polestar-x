@@ -566,10 +566,9 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		},
 	});
 
-	pi.on("tool_result", async (event, ctx) => {
-		const state = getRoutingState(ctx);
-		if (event.isError) state.turnHadError = true;
+	const retryCounters = new Map<string, number>();
 
+	pi.on("tool_result", async (event) => {
 		if (event.toolName !== "bash" || !event.isError) return;
 		const text = event.content.map((c) => ("text" in c ? c.text : "")).join("\n");
 		const command = String(event.input.command ?? "");
@@ -579,7 +578,14 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 			stderr: text,
 			exitCode: 1,
 		});
-		if (!retry.shouldRetry) return;
+
+		const attempt = retryCounters.get(event.toolCallId) ?? 0;
+		const decision = decideRetry(failureClass, attempt);
+
+		if (!decision.shouldRetry) return;
+
+		retryCounters.set(event.toolCallId, attempt + 1);
+
 		return {
 			content: [
 				{

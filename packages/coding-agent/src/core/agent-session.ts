@@ -13,6 +13,7 @@
  * Modes use this class and add their own I/O layer on top.
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import type {
@@ -288,6 +289,7 @@ export class AgentSession {
 	// Extension system
 	private _extensionRunner!: ExtensionRunner;
 	private _turnIndex = 0;
+	private _toolCallCounts: Map<string, number> = new Map();
 
 	private _resourceLoader: ResourceLoader;
 	private _customTools: ToolDefinition[];
@@ -420,6 +422,26 @@ export class AgentSession {
 		};
 
 		this.agent.afterToolCall = async ({ toolCall, args, result, isError }) => {
+			const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
+			const toolKey = `${toolCall.name}:${argsHash}`;
+			const count = (this._toolCallCounts.get(toolKey) || 0) + 1;
+			this._toolCallCounts.set(toolKey, count);
+
+			if (count >= 3 && this._extensionUIContext) {
+				const confirmed = await this._extensionUIContext.confirm(
+					"Doom Loop Detected",
+					"I've run this exact command 3 times. Continue?",
+				);
+				if (!confirmed) {
+					await this.abort();
+					return {
+						content: [{ type: "text", text: "User aborted due to doom loop." }],
+						isError: true,
+						terminate: true,
+					};
+				}
+			}
+
 			const runner = this._extensionRunner;
 			if (!runner.hasHandlers("tool_result")) {
 				return undefined;
@@ -619,6 +641,9 @@ export class AgentSession {
 			await this._extensionRunner.emit(extensionEvent);
 			this._turnIndex++;
 		} else if (event.type === "message_start") {
+			if (event.message.role === "user") {
+				this._toolCallCounts.clear();
+			}
 			const extensionEvent: MessageStartEvent = {
 				type: "message_start",
 				message: event.message,
