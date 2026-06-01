@@ -27,10 +27,7 @@ import { shortAsciiLogoCompactText } from "../ui/branding.ts";
 const MEMORY_SEARCH_TIMEOUT_MS = 1500;
 
 export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
-	const memory = createMemoryBackend(async (cmd, args) => {
-		const result = await pi.exec(cmd, args, { timeout: MEMORY_SEARCH_TIMEOUT_MS });
-		return { stdout: result.stdout, code: result.code };
-	});
+	const memory = createMemoryBackend();
 
 	// Register all new tools
 	pi.registerTool(globTool);
@@ -187,6 +184,26 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	});
 
 	pi.registerTool({
+		name: "memory_log_ticket",
+		label: "Memory Log Ticket",
+		description: "Log a resolved ticket to pi-memory with resolution notes",
+		parameters: Type.Object({
+			id: Type.String(),
+			summary: Type.String(),
+			resolution: Type.Optional(Type.String()),
+			tags: Type.Optional(Type.String()),
+		}),
+		async execute(_id, params) {
+			const tags = params.tags
+				?.split(",")
+				.map((t) => t.trim())
+				.filter(Boolean);
+			await memory.logTicket(params.id, params.summary, params.resolution, tags);
+			return { content: [{ type: "text", text: "ticket logged" }], details: { ticketId: params.id } };
+		},
+	});
+
+	pi.registerTool({
 		name: "manage_skill",
 		label: "Manage Skill",
 		description: "Scaffold a new SKILL.md under the agent skills directory",
@@ -330,6 +347,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 				"task",
 				"memory_search",
 				"memory_log_learning",
+				"memory_log_ticket",
 				"manage_skill",
 			];
 			const builtins = ["read", "bash", "edit", "write", "grep", "find", "ls"];
