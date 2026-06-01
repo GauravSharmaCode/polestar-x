@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyFailure, FailureInput } from "./classify-failure.ts";
+import { classifyFailure, type FailureInput } from "./classify-failure.ts";
 
 describe("classifyFailure", () => {
 	const defaultInput: FailureInput = {
@@ -32,11 +32,15 @@ describe("classifyFailure", () => {
 	});
 
 	it("classifies test and code failures correctly", () => {
-		expect(classifyFailure({ ...defaultInput, stderr: "AssertionError: expected 1 to equal 2", exitCode: 1 })).toBe("code_test");
+		expect(classifyFailure({ ...defaultInput, stderr: "AssertionError: expected 1 to equal 2", exitCode: 1 })).toBe(
+			"code_test",
+		);
 		expect(classifyFailure({ ...defaultInput, stdout: "Tests failed", exitCode: 1 })).toBe("code_test");
 
 		// Fallback to code_test when exitCode !== 0 and no other category matches
-		expect(classifyFailure({ ...defaultInput, exitCode: 1, stderr: "Some random application error" })).toBe("code_test");
+		expect(classifyFailure({ ...defaultInput, exitCode: 1, stderr: "Some random application error" })).toBe(
+			"code_test",
+		);
 	});
 
 	it("classifies unknown failures correctly", () => {
@@ -48,19 +52,23 @@ describe("classifyFailure", () => {
 
 	it("handles multi-line input and mixed categories with correct precedence", () => {
 		// unsafe should take precedence over others
-		expect(classifyFailure({
-			...defaultInput,
-			command: "npm test",
-			stderr: "Failed to run tests\nrm -rf /",
-			exitCode: 1,
-		})).toBe("unsafe");
+		expect(
+			classifyFailure({
+				...defaultInput,
+				command: "npm test",
+				stderr: "Failed to run tests\nrm -rf /",
+				exitCode: 1,
+			}),
+		).toBe("unsafe");
 
 		// provider should take precedence over infra and code_test
-		expect(classifyFailure({
-			...defaultInput,
-			command: "npm install",
-			stderr: "Cannot find module 'something'\nRate limit exceeded",
-			exitCode: 1,
-		})).toBe("provider");
+		expect(
+			classifyFailure({
+				...defaultInput,
+				command: "npm install",
+				stderr: "Cannot find module 'something'\nRate limit exceeded",
+				exitCode: 1,
+			}),
+		).toBe("provider");
 	});
 });
