@@ -566,25 +566,23 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		},
 	});
 
-	const retryCounters = new Map<string, number>();
-
-	pi.on("tool_result", async (event) => {
+	pi.on("tool_result", async (event, ctx) => {
 		if (event.toolName !== "bash" || !event.isError) return;
 		const text = event.content.map((c) => ("text" in c ? c.text : "")).join("\n");
 		const command = String(event.input.command ?? "");
-		const retry = queueToolFailureRetry(getSelfHealState(ctx), {
+		const selfHealState = getSelfHealState(ctx);
+		const retry = queueToolFailureRetry(selfHealState, {
 			command,
 			stdout: text,
 			stderr: text,
 			exitCode: 1,
 		});
 
-		const attempt = retryCounters.get(event.toolCallId) ?? 0;
-		const decision = decideRetry(failureClass, attempt);
+		if (!retry.shouldRetry) return;
 
-		if (!decision.shouldRetry) return;
-
-		retryCounters.set(event.toolCallId, attempt + 1);
+		// Mark this turn as having an error for consecutive failure tracking
+		const routingState = getRoutingState(ctx);
+		routingState.turnHadError = true;
 
 		return {
 			content: [
