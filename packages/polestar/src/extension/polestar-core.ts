@@ -8,7 +8,8 @@ import { formatHistoricalMemoryBlock } from "../memory/format.ts";
 import { POLESTAR_DEFAULT_TOOLS, planExitTool, setExecutionMode } from "../modes/think-write.ts";
 import { composeSystemPrompt } from "../prompts/compose-system-prompt.ts";
 import { INIT_ONBOARDING_PROMPT } from "../prompts/init-onboarding.ts";
-import { routeModel } from "../router/route-model.ts";
+import type { RoutingDecision } from "../router/model-router.ts";
+import { modelRouter } from "../router/model-router.ts";
 import { classifyFailure } from "../self-heal/classify-failure.ts";
 import { decideRetry } from "../self-heal/retry-policy.ts";
 // Import Subagents Tool
@@ -28,6 +29,74 @@ const MEMORY_SEARCH_TIMEOUT_MS = 1500;
 
 export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	const memory = createMemoryBackend();
+	interface RoutingState {
+		initialPrompt?: string;
+		turnCount: number;
+		consecutiveFailures: number;
+		turnHadError: boolean;
+	}
+	const sessionRoutingState = new Map<string, RoutingState>();
+
+	const getRoutingState = (ctx: { sessionManager: { getSessionId(): string } }): RoutingState => {
+		const sessionId = ctx.sessionManager.getSessionId();
+		const existing = sessionRoutingState.get(sessionId);
+		if (existing) return existing;
+		const created: RoutingState = { turnCount: 0, consecutiveFailures: 0, turnHadError: false };
+		sessionRoutingState.set(sessionId, created);
+		return created;
+	};
+
+	const buildRoutingPrompt = (messages: Array<{ role: string; content: unknown }>, fallback: string): string => {
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const msg = messages[i];
+			if (msg.role !== "user") continue;
+			const text = extractTextFromContent(msg.content);
+			return text.trim() ? text : fallback;
+		}
+		return fallback;
+	};
+
+	const extractTextFromContent = (content: unknown): string => {
+		if (typeof content === "string") return content;
+		if (!Array.isArray(content)) return "";
+		let out = "";
+		for (const item of content) {
+			if (!item || typeof item !== "object") continue;
+			if (!("type" in item)) continue;
+			const type = (item as { type?: unknown }).type;
+			if (type === "text" && "text" in item) {
+				const text = (item as { text?: unknown }).text;
+				if (typeof text === "string") out += out ? `\n${text}` : text;
+			}
+		}
+		return out;
+	};
+
+	const applyRoutingDecision = async (
+		decision: RoutingDecision,
+		ctx: { model: { id: string; provider: string } | undefined },
+	) => {
+		if (decision.taskClass === "privacy_local" && !decision.model) {
+			throw new Error(
+				"Security Block: This task involves sensitive/privacy data, but no local model (Ollama/local) is available to handle it safely.",
+			);
+		}
+
+		const current = ctx.model;
+		const desired = decision.model;
+		const currentMatchesDesired =
+			Boolean(current && desired) && current.provider === desired.provider && current.id === desired.id;
+
+		if (desired && !currentMatchesDesired) {
+			const fallbackChain = decision.fallbackChain.length > 0 ? decision.fallbackChain : [desired];
+			for (const candidate of fallbackChain) {
+				const ok = await pi.setModel(candidate);
+				if (ok) break;
+			}
+		}
+
+		pi.setThinkingLevel(decision.thinkingLevel);
+	};
 
 	// Register all new tools
 	pi.registerTool(globTool);
@@ -95,9 +164,48 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		disconnectMcpBridge();
 	});
 
+	pi.on("turn_start", async (event, ctx) => {
+		const state = getRoutingState(ctx);
+		state.turnCount = event.turnIndex + 1;
+		state.turnHadError = false;
+	});
+
+	pi.on("turn_end", async (_event, ctx) => {
+		const state = getRoutingState(ctx);
+		state.consecutiveFailures = state.turnHadError ? state.consecutiveFailures + 1 : 0;
+	});
+
+	pi.on("context", async (event, ctx) => {
+		const state = getRoutingState(ctx);
+		const available = ctx.modelRegistry.getAvailable();
+		if (available.length === 0) return;
+
+		const routingPrompt = buildRoutingPrompt(event.messages, state.initialPrompt ?? "");
+		const decision = modelRouter.route({
+			prompt: routingPrompt,
+			turnCount: state.turnCount,
+			previousFailures: state.consecutiveFailures,
+			currentModel: ctx.model,
+			availableModels: available,
+		});
+
+		await applyRoutingDecision(decision, ctx);
+
+		if (ctx.ui) {
+			const modelLabel = decision.model ? `${decision.model.provider}/${decision.model.id}` : "(no model)";
+			ctx.ui.setStatus("router", `${modelLabel} ${decision.thinkingLevel} ${decision.reason}`);
+		}
+	});
+
 	pi.on("before_agent_start", async (event, ctx) => {
 		// Bind pi reference for use in tools
 		(ctx as any)._pi = pi;
+
+		const state = getRoutingState(ctx);
+		state.initialPrompt = event.prompt;
+		state.turnCount = 0;
+		state.consecutiveFailures = 0;
+		state.turnHadError = false;
 
 		const systemPrompt = composeSystemPrompt(event.systemPrompt);
 		const memoryMd = await memory.readMemoryFile();
@@ -117,18 +225,14 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 
 		const available = ctx.modelRegistry.getAvailable();
 		if (available.length > 0) {
-			const route = routeModel({
+			const initialDecision = modelRouter.route({
 				prompt: event.prompt,
+				turnCount: 0,
+				previousFailures: 0,
 				currentModel: ctx.model,
 				availableModels: available,
 			});
-			if (route.model) {
-				await pi.setModel(route.model);
-			} else if (route.taskClass === "privacy_local") {
-				throw new Error(
-					"Security Block: This task involves sensitive/privacy data, but no local model (Ollama/local) is available to handle it safely.",
-				);
-			}
+			await applyRoutingDecision(initialDecision, ctx);
 		}
 
 		if (memoryBlock) {
@@ -441,7 +545,10 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		},
 	});
 
-	pi.on("tool_result", async (event) => {
+	pi.on("tool_result", async (event, ctx) => {
+		const state = getRoutingState(ctx);
+		if (event.isError) state.turnHadError = true;
+
 		if (event.toolName !== "bash" || !event.isError) return;
 		const text = event.content.map((c) => ("text" in c ? c.text : "")).join("\n");
 		const failureClass = classifyFailure({

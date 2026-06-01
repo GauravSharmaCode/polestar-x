@@ -1,3 +1,4 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { TaskClass } from "./types.ts";
 
 const PRIVACY_PATTERNS = [
@@ -62,4 +63,35 @@ export function classifyTask(prompt: string, preferLocal = false): TaskClass {
 	}
 	// Single-line prompts default to code_edit
 	return "code_edit";
+}
+
+export interface ClassificationResult {
+	taskClass: TaskClass;
+	complexity: "low" | "medium" | "high";
+	suggestedThinking: ThinkingLevel;
+}
+
+export function classifyTaskWithComplexity(prompt: string, preferLocal = false): ClassificationResult {
+	const taskClass = classifyTask(prompt, preferLocal);
+
+	// Complexity heuristics
+	const trimmed = prompt.trim();
+	const lines = trimmed ? trimmed.split(/\r?\n/) : [];
+	const lineCount = lines.length;
+	const wordCount = trimmed ? trimmed.split(/\s+/).filter(Boolean).length : 0;
+	const hasMultipleFiles = /multiple files|across.*files|several.*files/i.test(prompt);
+	const hasRefactoring = /refactor|restructure|reorganize/i.test(prompt);
+	const hasDebugging = /debug|fix.*bug|investigate|trace/i.test(prompt);
+
+	let complexity: "low" | "medium" | "high" = "low";
+
+	if (lineCount > 10 || wordCount > 100 || hasMultipleFiles || hasRefactoring) {
+		complexity = "high";
+	} else if (lineCount > 3 || wordCount > 30 || hasDebugging) {
+		complexity = "medium";
+	}
+
+	const suggestedThinking: ThinkingLevel = complexity === "high" ? "high" : complexity === "medium" ? "medium" : "off";
+
+	return { taskClass, complexity, suggestedThinking };
 }
