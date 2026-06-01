@@ -8,9 +8,11 @@ import { formatHistoricalMemoryBlock } from "../memory/format.ts";
 import { POLESTAR_DEFAULT_TOOLS, planExitTool, setExecutionMode } from "../modes/think-write.ts";
 import { composeSystemPrompt } from "../prompts/compose-system-prompt.ts";
 import { INIT_ONBOARDING_PROMPT } from "../prompts/init-onboarding.ts";
-import { routeModel } from "../router/route-model.ts";
-import { classifyFailure } from "../self-heal/classify-failure.ts";
-import { decideRetry } from "../self-heal/retry-policy.ts";
+import type { RoutingDecision } from "../router/model-router.ts";
+import { modelRouter } from "../router/model-router.ts";
+import { dispatchPendingSelfHealRetry, queueToolFailureRetry } from "../self-heal/auto-retry.ts";
+import { SELF_HEAL_FOLLOW_UP_PREFIX } from "../self-heal/dispatch.ts";
+import { createSelfHealState, resetSelfHealAttempts, type SelfHealState } from "../self-heal/state.ts";
 // Import Subagents Tool
 import { taskTool } from "../subagents/task-tool.ts";
 import { applyPatchTool } from "../tools/apply-patch.ts";
@@ -28,6 +30,84 @@ const MEMORY_SEARCH_TIMEOUT_MS = 1500;
 
 export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	const memory = createMemoryBackend();
+	interface RoutingState {
+		initialPrompt?: string;
+		turnCount: number;
+		consecutiveFailures: number;
+		turnHadError: boolean;
+	}
+	const sessionRoutingState = new Map<string, RoutingState>();
+	const sessionSelfHealState = new Map<string, SelfHealState>();
+
+	const getRoutingState = (ctx: { sessionManager: { getSessionId(): string } }): RoutingState => {
+		const sessionId = ctx.sessionManager.getSessionId();
+		const existing = sessionRoutingState.get(sessionId);
+		if (existing) return existing;
+		const created: RoutingState = { turnCount: 0, consecutiveFailures: 0, turnHadError: false };
+		sessionRoutingState.set(sessionId, created);
+		return created;
+	};
+
+	const getSelfHealState = (ctx: { sessionManager: { getSessionId(): string } }): SelfHealState => {
+		const sessionId = ctx.sessionManager.getSessionId();
+		const existing = sessionSelfHealState.get(sessionId);
+		if (existing) return existing;
+		const created = createSelfHealState();
+		sessionSelfHealState.set(sessionId, created);
+		return created;
+	};
+
+	const buildRoutingPrompt = (messages: Array<{ role: string; content: unknown }>, fallback: string): string => {
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const msg = messages[i];
+			if (msg.role !== "user") continue;
+			const text = extractTextFromContent(msg.content);
+			return text.trim() ? text : fallback;
+		}
+		return fallback;
+	};
+
+	const extractTextFromContent = (content: unknown): string => {
+		if (typeof content === "string") return content;
+		if (!Array.isArray(content)) return "";
+		let out = "";
+		for (const item of content) {
+			if (!item || typeof item !== "object") continue;
+			if (!("type" in item)) continue;
+			const type = (item as { type?: unknown }).type;
+			if (type === "text" && "text" in item) {
+				const text = (item as { text?: unknown }).text;
+				if (typeof text === "string") out += out ? `\n${text}` : text;
+			}
+		}
+		return out;
+	};
+
+	const applyRoutingDecision = async (
+		decision: RoutingDecision,
+		ctx: { model: { id: string; provider: string } | undefined },
+	) => {
+		if (decision.taskClass === "privacy_local" && !decision.model) {
+			throw new Error(
+				"Security Block: This task involves sensitive/privacy data, but no local model (Ollama/local) is available to handle it safely.",
+			);
+		}
+
+		const current = ctx.model;
+		const desired = decision.model;
+		const currentMatchesDesired =
+			Boolean(current && desired) && current.provider === desired.provider && current.id === desired.id;
+
+		if (desired && !currentMatchesDesired) {
+			const fallbackChain = decision.fallbackChain.length > 0 ? decision.fallbackChain : [desired];
+			for (const candidate of fallbackChain) {
+				const ok = await pi.setModel(candidate);
+				if (ok) break;
+			}
+		}
+
+		pi.setThinkingLevel(decision.thinkingLevel);
+	};
 
 	// Register all new tools
 	pi.registerTool(globTool);
@@ -95,9 +175,56 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		disconnectMcpBridge();
 	});
 
+	pi.on("turn_start", async (event, ctx) => {
+		const state = getRoutingState(ctx);
+		state.turnCount = event.turnIndex + 1;
+		state.turnHadError = false;
+	});
+
+	pi.on("turn_end", async (event, ctx) => {
+		const state = getRoutingState(ctx);
+		if (state.turnHadError || (event.message.role === "assistant" && event.message.stopReason === "error")) {
+			state.consecutiveFailures += 1;
+		} else {
+			state.consecutiveFailures = 0;
+			resetSelfHealAttempts(getSelfHealState(ctx));
+		}
+	});
+
+	pi.on("context", async (event, ctx) => {
+		const state = getRoutingState(ctx);
+		const available = ctx.modelRegistry.getAvailable();
+		if (available.length === 0) return;
+
+		const routingPrompt = buildRoutingPrompt(event.messages, state.initialPrompt ?? "");
+		const decision = modelRouter.route({
+			prompt: routingPrompt,
+			turnCount: state.turnCount,
+			previousFailures: state.consecutiveFailures,
+			currentModel: ctx.model,
+			availableModels: available,
+		});
+
+		await applyRoutingDecision(decision, ctx);
+
+		if (ctx.ui) {
+			const modelLabel = decision.model ? `${decision.model.provider}/${decision.model.id}` : "(no model)";
+			ctx.ui.setStatus("router", `${modelLabel} ${decision.thinkingLevel} ${decision.reason}`);
+		}
+	});
+
 	pi.on("before_agent_start", async (event, ctx) => {
 		// Bind pi reference for use in tools
 		(ctx as any)._pi = pi;
+
+		const state = getRoutingState(ctx);
+		state.initialPrompt = event.prompt;
+		state.turnCount = 0;
+		state.consecutiveFailures = 0;
+		state.turnHadError = false;
+		if (!event.prompt.startsWith(SELF_HEAL_FOLLOW_UP_PREFIX)) {
+			resetSelfHealAttempts(getSelfHealState(ctx));
+		}
 
 		const systemPrompt = composeSystemPrompt(event.systemPrompt);
 		const memoryMd = await memory.readMemoryFile();
@@ -117,18 +244,14 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 
 		const available = ctx.modelRegistry.getAvailable();
 		if (available.length > 0) {
-			const route = routeModel({
+			const initialDecision = modelRouter.route({
 				prompt: event.prompt,
+				turnCount: 0,
+				previousFailures: 0,
 				currentModel: ctx.model,
 				availableModels: available,
 			});
-			if (route.model) {
-				await pi.setModel(route.model);
-			} else if (route.taskClass === "privacy_local") {
-				throw new Error(
-					"Security Block: This task involves sensitive/privacy data, but no local model (Ollama/local) is available to handle it safely.",
-				);
-			}
+			await applyRoutingDecision(initialDecision, ctx);
 		}
 
 		if (memoryBlock) {
@@ -145,8 +268,10 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		return { systemPrompt: mergedPrompt };
 	});
 
-	pi.on("agent_end", async () => {
-		// Auto-logging off by default — explicit tools/commands only.
+	pi.on("agent_end", async (event, ctx) => {
+		const routing = getRoutingState(ctx);
+		const selfHeal = getSelfHealState(ctx);
+		await dispatchPendingSelfHealRetry(pi, selfHeal, event.messages, routing, ctx);
 	});
 
 	pi.registerTool({
@@ -388,7 +513,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 				"- **session_start**: Initializes the default tool suite and boots external Model Context Protocol (MCP) servers.",
 				"- **session_shutdown**: Gracefully tears down MCP stdio child processes.",
 				"- **before_agent_start**: Restores long-term memory records and applies privacy routing rules to enforce local model security.",
-				"- **tool_result**: Listens to bash command executions and triggers the self-healing retry pipeline on diagnostic errors.",
+				"- **tool_result** / **agent_end**: Classifies bash/provider failures, queues automatic follow-up retries (hooks into agent-session auto-retry for LLM provider faults), and falls back to alternate models on repeated provider errors.",
 			].join("\n");
 			ctx.ui.notify(output, "info");
 		},
@@ -446,8 +571,9 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	pi.on("tool_result", async (event) => {
 		if (event.toolName !== "bash" || !event.isError) return;
 		const text = event.content.map((c) => ("text" in c ? c.text : "")).join("\n");
-		const failureClass = classifyFailure({
-			command: String(event.input.command ?? ""),
+		const command = String(event.input.command ?? "");
+		const retry = queueToolFailureRetry(getSelfHealState(ctx), {
+			command,
 			stdout: text,
 			stderr: text,
 			exitCode: 1,
@@ -464,7 +590,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 			content: [
 				{
 					type: "text",
-					text: `${text}\n\n[polestar-self-heal] ${decision.reason}. Diagnose root cause before retrying.`,
+					text: `${text}\n\n[polestar-self-heal] ${retry.reason}. Automatic retry will run after this turn.`,
 				},
 			],
 		};
