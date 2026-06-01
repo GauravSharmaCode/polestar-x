@@ -1,4 +1,6 @@
-import type { MemorySearchResult } from "pi-memory";
+import type { SearchResult } from "@gauravsharmacode/pi-memory/dist/core/search.js";
+
+export type MemorySearchResult = SearchResult;
 
 export interface MemoryBackend {
 	search(query: string, signal?: AbortSignal): Promise<MemorySearchResult[]>;
@@ -9,7 +11,8 @@ export interface MemoryBackend {
 
 export class DirectMemoryBackend implements MemoryBackend {
 	// Lazy-loaded pi-memory client
-	private memoryClient: any = null;
+	private searchMemory: any = null;
+	private logWork: any = null;
 	private initPromise: Promise<void> | null = null;
 
 	private async ensureInitialized(): Promise<void> {
@@ -18,11 +21,14 @@ export class DirectMemoryBackend implements MemoryBackend {
 		this.initPromise = (async () => {
 			try {
 				// Dynamically import pi-memory to avoid adding it as a hard dependency if not available
-				const piMemory = await import("pi-memory");
-				this.memoryClient = piMemory;
+				const searchModule = await import("@gauravsharmacode/pi-memory/dist/tools/search.js");
+				const logModule = await import("@gauravsharmacode/pi-memory/dist/tools/log.js");
+				this.searchMemory = searchModule.searchMemory;
+				this.logWork = logModule.logWork;
 			} catch {
 				// pi-memory not available, will gracefully degrade
-				this.memoryClient = null;
+				this.searchMemory = null;
+				this.logWork = null;
 			}
 		})();
 
@@ -32,13 +38,13 @@ export class DirectMemoryBackend implements MemoryBackend {
 	async search(query: string, signal?: AbortSignal): Promise<MemorySearchResult[]> {
 		await this.ensureInitialized();
 
-		if (!this.memoryClient) {
+		if (!this.searchMemory) {
 			return [];
 		}
 
 		try {
-			const results = await this.memoryClient.search?.(query, { signal });
-			return Array.isArray(results) ? results : [];
+			const response = await this.searchMemory({ query, maxResults: 5 });
+			return response?.results || [];
 		} catch (err: any) {
 			if (signal?.aborted) return [];
 			console.debug(`Memory search error: ${err.message}`);
@@ -49,12 +55,12 @@ export class DirectMemoryBackend implements MemoryBackend {
 	async logLearning(summary: string, tags: string[] = []): Promise<void> {
 		await this.ensureInitialized();
 
-		if (!this.memoryClient) {
+		if (!this.logWork) {
 			return;
 		}
 
 		try {
-			await this.memoryClient.log?.({
+			await this.logWork({
 				type: "learning",
 				summary,
 				tags,
@@ -67,15 +73,15 @@ export class DirectMemoryBackend implements MemoryBackend {
 	async logTicket(id: string, summary: string, resolution?: string, tags: string[] = []): Promise<void> {
 		await this.ensureInitialized();
 
-		if (!this.memoryClient) {
+		if (!this.logWork) {
 			return;
 		}
 
 		try {
-			await this.memoryClient.log?.({
+			await this.logWork({
 				type: "ticket",
-				id,
 				summary,
+				ticketId: id,
 				resolution,
 				tags,
 			});
@@ -85,19 +91,8 @@ export class DirectMemoryBackend implements MemoryBackend {
 	}
 
 	async readMemoryFile(): Promise<string | undefined> {
-		await this.ensureInitialized();
-
-		if (!this.memoryClient) {
-			return undefined;
-		}
-
-		try {
-			const content = await this.memoryClient.readMemory?.();
-			return content && typeof content === "string" ? content : undefined;
-		} catch (err: any) {
-			console.debug(`Memory read error: ${err.message}`);
-			return undefined;
-		}
+		// pi-memory doesn't expose a read function, returning undefined
+		return undefined;
 	}
 }
 
