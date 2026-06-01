@@ -7,6 +7,21 @@ function isLocalModel(model: { provider: string; id: string }): boolean {
 	return p.includes("ollama") || p.includes("local") || id.includes("local") || model.provider === "custom";
 }
 
+function isCapableModel(model: { id: string }): boolean {
+	// Strong models (Opus, Claude 3.5 Sonnet, GPT-4 Turbo/5, etc.)
+	// Explicitly exclude fast models (-haiku, -mini, -flash)
+	const id = model.id.toLowerCase();
+	if (id.includes("haiku") || id.includes("mini") || id.includes("flash")) {
+		return false;
+	}
+	return /opus|claude-3-5-sonnet|gpt-4-turbo|gpt-5|claude-4|sonnet|pro/i.test(id);
+}
+
+function isFastModel(model: { id: string }): boolean {
+	// Fast/cheap models
+	return /flash|mini|haiku|fast|nano/i.test(model.id);
+}
+
 function pickByClass(
 	models: RouteRequest["availableModels"],
 	taskClass: ReturnType<typeof classifyTask>,
@@ -23,15 +38,20 @@ function pickByClass(
 	}
 
 	if (taskClass === "architecture") {
-		return models.find((m) => /opus|gpt-5|sonnet|pro/i.test(m.id)) ?? models.find((m) => m.reasoning) ?? models[0];
+		return models.find((m) => isCapableModel(m)) ?? models.find((m) => m.reasoning) ?? models[0];
+	}
+
+	if (taskClass === "code_edit") {
+		// Code editing typically needs moderate capability; prefer capable models but allow fast fallback
+		return models.find((m) => isCapableModel(m)) ?? models.find((m) => !isFastModel(m)) ?? models[0];
 	}
 
 	if (taskClass === "exploration") {
-		return models.find((m) => /flash|mini|haiku|fast/i.test(m.id)) ?? models[0];
+		return models.find((m) => isFastModel(m)) ?? models[0];
 	}
 
 	if (taskClass === "background") {
-		return models.find((m) => /mini|flash|haiku|nano/i.test(m.id)) ?? models[0];
+		return models.find((m) => isFastModel(m)) ?? models[0];
 	}
 
 	return models[0];

@@ -35,4 +35,57 @@ describe("routeModel", () => {
 		expect(result.model).toBeUndefined();
 		expect(result.reason).toBe("blocked:privacy_local:no_local_model_available");
 	});
+
+	it("routes multi-line tasks to architecture (safer default)", () => {
+		const result = routeModel({
+			prompt: "Fix these problems:\n\n1. Memory logging\n2. Worktree isolation\n3. Router improvements",
+			availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus"), mockModel("gpt-4-turbo")],
+		});
+		expect(result.taskClass).toBe("architecture");
+		expect(result.model?.id).toBe("claude-3-5-opus");
+	});
+
+	it("routes architecture tasks to Opus/strong models", () => {
+		const result = routeModel({
+			prompt: "Design a new caching layer for the agent",
+			availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")],
+		});
+		expect(result.taskClass).toBe("architecture");
+		expect(result.model?.id).toBe("claude-3-5-opus");
+	});
+
+	it("routes code_edit tasks to capable models when available", () => {
+		const result = routeModel({
+			prompt: "Change the color scheme from blue to green",
+			availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-sonnet")],
+		});
+		expect(result.taskClass).toBe("code_edit");
+		expect(result.model?.id).toBe("claude-3-5-sonnet");
+	});
+
+	it("routes exploration tasks to fast models", () => {
+		const result = routeModel({
+			prompt: "grep through the codebase for all calls to routeModel",
+			availableModels: [mockModel("claude-3-5-opus"), mockModel("claude-3-5-haiku")],
+		});
+		expect(result.taskClass).toBe("exploration");
+		expect(result.model?.id).toBe("claude-3-5-haiku");
+	});
+
+	it("routes background tasks to fast models", () => {
+		const result = routeModel({
+			prompt: "Fix a typo in the README",
+			availableModels: [mockModel("claude-3-5-opus"), mockModel("claude-3-5-haiku")],
+		});
+		expect(result.taskClass).toBe("background");
+		expect(result.model?.id).toBe("claude-3-5-haiku");
+	});
+
+	it("prioritizes capable models over fast models for code_edit", () => {
+		const result = routeModel({
+			prompt: "Add error handling to the fetch function",
+			availableModels: [mockModel("gpt-4-mini"), mockModel("gpt-4-turbo")],
+		});
+		expect(result.model?.id).toBe("gpt-4-turbo");
+	});
 });
