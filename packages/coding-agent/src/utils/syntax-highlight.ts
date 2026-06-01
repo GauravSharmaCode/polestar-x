@@ -1,3 +1,4 @@
+/// <reference path="./highlight-js-lib-index.d.ts" />
 import hljs from "highlight.js/lib/index.js";
 import { decodeHtmlEntityAt } from "./html.ts";
 
