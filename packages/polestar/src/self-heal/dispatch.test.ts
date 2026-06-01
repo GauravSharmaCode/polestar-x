@@ -1,5 +1,6 @@
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { describe, expect, it } from "vitest";
-import { queueToolFailureRetry } from "./auto-retry.ts";
+import { dispatchPendingSelfHealRetry, queueToolFailureRetry } from "./auto-retry.ts";
 import { buildSelfHealFollowUp, isAutoRetryFailureClass, shouldDeferAssistantRetryToAgentSession } from "./dispatch.ts";
 import { createSelfHealState } from "./state.ts";
 
@@ -46,5 +47,41 @@ describe("self-heal dispatch", () => {
 		expect(isAutoRetryFailureClass("code_test")).toBe(true);
 		expect(isAutoRetryFailureClass("provider")).toBe(true);
 		expect(isAutoRetryFailureClass("infra")).toBe(false);
+	});
+
+	it("does not retry unclassified assistant errors", async () => {
+		const state = createSelfHealState();
+		const sentMessages: string[] = [];
+		const pi = {
+			sendUserMessage(content: string | unknown[]) {
+				if (typeof content === "string") {
+					sentMessages.push(content);
+				}
+			},
+		} as Parameters<typeof dispatchPendingSelfHealRetry>[0];
+		const ctx: Parameters<typeof dispatchPendingSelfHealRetry>[4] = {
+			model: undefined,
+			modelRegistry: { getAvailable: () => [] },
+		};
+		const messages = [
+			{
+				role: "assistant",
+				content: [],
+				stopReason: "error",
+				errorMessage: "authentication error: invalid API key",
+			} as unknown as AgentMessage,
+		];
+
+		const retried = await dispatchPendingSelfHealRetry(
+			pi,
+			state,
+			messages,
+			{ turnCount: 1, consecutiveFailures: 0 },
+			ctx,
+		);
+
+		expect(retried).toBe(false);
+		expect(sentMessages).toEqual([]);
+		expect(state.attemptsByClass).toEqual({});
 	});
 });

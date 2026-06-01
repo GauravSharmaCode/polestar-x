@@ -78,12 +78,15 @@ export async function dispatchPendingSelfHealRetry(
 			return false;
 		}
 
-		const failureClass: FailureClass = classifyFailure({
+		let failureClass: FailureClass = classifyFailure({
 			command: "",
 			stdout: assistantError.errorMessage,
 			stderr: "",
-			exitCode: 1,
+			exitCode: 0,
 		});
+		if (failureClass === "code_test") {
+			failureClass = "unknown";
+		}
 		if (!isAutoRetryFailureClass(failureClass)) return false;
 
 		const attempt = getAttemptCount(state, failureClass);

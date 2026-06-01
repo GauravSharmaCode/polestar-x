@@ -11,6 +11,7 @@ import { INIT_ONBOARDING_PROMPT } from "../prompts/init-onboarding.ts";
 import type { RoutingDecision } from "../router/model-router.ts";
 import { modelRouter } from "../router/model-router.ts";
 import { dispatchPendingSelfHealRetry, queueToolFailureRetry } from "../self-heal/auto-retry.ts";
+import { SELF_HEAL_FOLLOW_UP_PREFIX } from "../self-heal/dispatch.ts";
 import { createSelfHealState, resetSelfHealAttempts, type SelfHealState } from "../self-heal/state.ts";
 // Import Subagents Tool
 import { taskTool } from "../subagents/task-tool.ts";
@@ -180,9 +181,9 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		state.turnHadError = false;
 	});
 
-	pi.on("turn_end", async (_event, ctx) => {
+	pi.on("turn_end", async (event, ctx) => {
 		const state = getRoutingState(ctx);
-		if (state.turnHadError) {
+		if (state.turnHadError || (event.message.role === "assistant" && event.message.stopReason === "error")) {
 			state.consecutiveFailures += 1;
 		} else {
 			state.consecutiveFailures = 0;
@@ -221,7 +222,9 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		state.turnCount = 0;
 		state.consecutiveFailures = 0;
 		state.turnHadError = false;
-		resetSelfHealAttempts(getSelfHealState(ctx));
+		if (!event.prompt.startsWith(SELF_HEAL_FOLLOW_UP_PREFIX)) {
+			resetSelfHealAttempts(getSelfHealState(ctx));
+		}
 
 		const systemPrompt = composeSystemPrompt(event.systemPrompt);
 		const memoryMd = await memory.readMemoryFile();

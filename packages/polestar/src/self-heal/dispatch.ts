@@ -6,6 +6,7 @@ import type { FailureClass } from "./classify-failure.ts";
 import type { PendingRetry } from "./state.ts";
 
 const AUTO_RETRY_CLASSES: FailureClass[] = ["code_test", "provider"];
+export const SELF_HEAL_FOLLOW_UP_PREFIX = "[polestar-self-heal]";
 
 export function isAutoRetryFailureClass(failureClass: FailureClass): boolean {
 	return AUTO_RETRY_CLASSES.includes(failureClass);
@@ -13,7 +14,7 @@ export function isAutoRetryFailureClass(failureClass: FailureClass): boolean {
 
 export function buildSelfHealFollowUp(pending: PendingRetry): string {
 	const lines = [
-		`[polestar-self-heal] ${pending.reason}. Diagnose root cause before retrying.`,
+		`${SELF_HEAL_FOLLOW_UP_PREFIX} ${pending.reason}. Diagnose root cause before retrying.`,
 		"",
 		"Continue working on the task. Fix the underlying issue before re-running the same command.",
 	];
