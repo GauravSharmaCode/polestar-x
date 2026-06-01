@@ -1,4 +1,8 @@
-import type { MemorySearchResult } from "pi-memory";
+export interface MemorySearchResult {
+	path: string;
+	snippet: string;
+	score: number;
+}
 
 export interface MemoryBackend {
 	search(query: string, signal?: AbortSignal): Promise<MemorySearchResult[]>;
@@ -8,8 +12,9 @@ export interface MemoryBackend {
 }
 
 export class DirectMemoryBackend implements MemoryBackend {
-	// Lazy-loaded pi-memory client
-	private memoryClient: any = null;
+	private searchMemoryFn: any = null;
+	private logWorkFn: any = null;
+	private getMemoryFileFn: any = null;
 	private initPromise: Promise<void> | null = null;
 
 	private async ensureInitialized(): Promise<void> {
@@ -17,12 +22,17 @@ export class DirectMemoryBackend implements MemoryBackend {
 
 		this.initPromise = (async () => {
 			try {
-				// Dynamically import pi-memory to avoid adding it as a hard dependency if not available
-				const piMemory = await import("pi-memory");
-				this.memoryClient = piMemory;
-			} catch {
-				// pi-memory not available, will gracefully degrade
-				this.memoryClient = null;
+				const searchMod = await import("@gauravsharmacode/pi-memory/dist/tools/search.js");
+				const logMod = await import("@gauravsharmacode/pi-memory/dist/tools/log.js");
+				const getMod = await import("@gauravsharmacode/pi-memory/dist/tools/get.js");
+				this.searchMemoryFn = searchMod.searchMemory;
+				this.logWorkFn = logMod.logWork;
+				this.getMemoryFileFn = getMod.getMemoryFile;
+			} catch (err: any) {
+				console.debug(`Failed to initialize direct memory backend: ${err.message}`);
+				this.searchMemoryFn = null;
+				this.logWorkFn = null;
+				this.getMemoryFileFn = null;
 			}
 		})();
 
@@ -31,16 +41,13 @@ export class DirectMemoryBackend implements MemoryBackend {
 
 	async search(query: string, signal?: AbortSignal): Promise<MemorySearchResult[]> {
 		await this.ensureInitialized();
-
-		if (!this.memoryClient) {
-			return [];
-		}
+		if (!this.searchMemoryFn) return [];
 
 		try {
-			const results = await this.memoryClient.search?.(query, { signal });
-			return Array.isArray(results) ? results : [];
-		} catch (err: any) {
+			const output = await this.searchMemoryFn({ query, maxResults: 5 });
 			if (signal?.aborted) return [];
+			return Array.isArray(output?.results) ? output.results : [];
+		} catch (err: any) {
 			console.debug(`Memory search error: ${err.message}`);
 			return [];
 		}
@@ -48,13 +55,10 @@ export class DirectMemoryBackend implements MemoryBackend {
 
 	async logLearning(summary: string, tags: string[] = []): Promise<void> {
 		await this.ensureInitialized();
-
-		if (!this.memoryClient) {
-			return;
-		}
+		if (!this.logWorkFn) return;
 
 		try {
-			await this.memoryClient.log?.({
+			await this.logWorkFn({
 				type: "learning",
 				summary,
 				tags,
@@ -66,15 +70,12 @@ export class DirectMemoryBackend implements MemoryBackend {
 
 	async logTicket(id: string, summary: string, resolution?: string, tags: string[] = []): Promise<void> {
 		await this.ensureInitialized();
-
-		if (!this.memoryClient) {
-			return;
-		}
+		if (!this.logWorkFn) return;
 
 		try {
-			await this.memoryClient.log?.({
+			await this.logWorkFn({
 				type: "ticket",
-				id,
+				ticketId: id,
 				summary,
 				resolution,
 				tags,
@@ -86,14 +87,11 @@ export class DirectMemoryBackend implements MemoryBackend {
 
 	async readMemoryFile(): Promise<string | undefined> {
 		await this.ensureInitialized();
-
-		if (!this.memoryClient) {
-			return undefined;
-		}
+		if (!this.getMemoryFileFn) return undefined;
 
 		try {
-			const content = await this.memoryClient.readMemory?.();
-			return content && typeof content === "string" ? content : undefined;
+			const output = await this.getMemoryFileFn({ path: "MEMORY.md" });
+			return output?.content;
 		} catch (err: any) {
 			console.debug(`Memory read error: ${err.message}`);
 			return undefined;
@@ -116,7 +114,6 @@ export class NoopMemoryBackend implements MemoryBackend {
 }
 
 export function createMemoryBackend(): MemoryBackend {
-	// Try to use direct backend; fall back to noop if pi-memory not available
 	try {
 		return new DirectMemoryBackend();
 	} catch {
