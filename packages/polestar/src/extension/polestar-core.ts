@@ -7,6 +7,7 @@ import { formatHistoricalMemoryBlock } from "../memory/format.ts";
 // Import Think/Write modes and MCP Bridge
 import { POLESTAR_DEFAULT_TOOLS, planExitTool, setExecutionMode } from "../modes/think-write.ts";
 import { composeSystemPrompt } from "../prompts/compose-system-prompt.ts";
+import { INIT_ONBOARDING_PROMPT } from "../prompts/init-onboarding.ts";
 import { routeModel } from "../router/route-model.ts";
 import { classifyFailure } from "../self-heal/classify-failure.ts";
 import { decideRetry } from "../self-heal/retry-policy.ts";
@@ -225,7 +226,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		},
 	});
 
-	pi.registerCommand("init", {
+	pi.registerCommand("init-config", {
 		description: "Bootstrap PoleStar config directory and defaults",
 		handler: async (_args, ctx) => {
 			const { mkdirSync, writeFileSync, existsSync } = await import("node:fs");
@@ -271,6 +272,13 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 			}
 
 			ctx.ui.notify(`Initialized ${dir} config directory.`, "info");
+		},
+	});
+
+	pi.registerCommand("init", {
+		description: "Initialize project documentation and onboarding",
+		handler: async (_args, _ctx) => {
+			pi.sendUserMessage(INIT_ONBOARDING_PROMPT, { deliverAs: "followUp" });
 		},
 	});
 
@@ -379,7 +387,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 
 			if (!existsSync(mcpPath)) {
 				output += "No configuration found at `.polestar/mcp.json`.\n";
-				output += "To bootstrap your workspace configuration, run `/init`.";
+				output += "To bootstrap your workspace configuration, run `/init-config`.";
 				ctx.ui.notify(output, "warning");
 				return;
 			}
