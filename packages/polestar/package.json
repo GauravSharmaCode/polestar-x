@@ -1,22 +1,52 @@
 {
-	"name": "@polestar-x/cli",
+	"name": "@gauravsharmacode/polestar-x",
 	"version": "0.1.0",
-	"description": "PoleStar-X sovereign coding agent CLI",
+	"description": "PoleStar-X sovereign coding agent CLI - A fork of pi with enhanced model routing, self-healing retry, and cross-session memory",
 	"type": "module",
-	"private": true,
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/GauravSharmaCode/polestar-x.git",
+		"directory": "packages/polestar"
+	},
+	"bugs": {
+		"url": "https://github.com/GauravSharmaCode/polestar-x/issues"
+	},
+	"homepage": "https://github.com/GauravSharmaCode/polestar-x#readme",
+	"keywords": [
+		"ai",
+		"coding-agent",
+		"cli",
+		"llm",
+		"claude",
+		"gpt",
+		"gemini",
+		"terminal",
+		"developer-tools"
+	],
+	"author": "Gaurav Sharma <gaurav@getlynx.co>",
 	"piConfig": {
 		"name": "polestar",
 		"displayTitle": "PoleStar-X",
 		"configDir": ".polestar"
 	},
 	"bin": {
-		"polestar": "src/cli.ts"
+		"polestar": "./dist/cli.js"
 	},
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"CHANGELOG.md",
+		"README.md",
+		"LICENSE",
+		"NOTICE.md"
+	],
 	"scripts": {
-		"build": "tsgo -p tsconfig.build.json",
-		"test": "vitest --run"
+		"clean": "shx rm -rf dist",
+		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js",
+		"test": "vitest --run",
+		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "^0.78.0",

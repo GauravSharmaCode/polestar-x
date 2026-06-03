@@ -34,7 +34,31 @@ PoleStar-X is an opinionated, batteries-included middle ground between rigid ent
 
 ---
 
-## Quick Start
+## Install
+
+```bash
+# Global install (recommended)
+npm install -g @gauravsharmacode/polestar-x
+
+# Or run without installing
+npx @gauravsharmacode/polestar-x
+```
+
+Then start the agent:
+
+```bash
+polestar
+```
+
+To verify install:
+
+```bash
+polestar --help
+```
+
+---
+
+## Quick Start (from source)
 
 ```bash
 npm install --ignore-scripts
