@@ -70,6 +70,8 @@ const ThemeJsonSchema = Type.Object({
 		toolDiffAdded: ColorValueSchema,
 		toolDiffRemoved: ColorValueSchema,
 		toolDiffContext: ColorValueSchema,
+		toolDiffAddedBg: ColorValueSchema,
+		toolDiffRemovedBg: ColorValueSchema,
 		// Syntax Highlighting (9 colors)
 		syntaxComment: ColorValueSchema,
 		syntaxKeyword: ColorValueSchema,
@@ -156,7 +158,9 @@ export type ThemeBg =
 	| "customMessageBg"
 	| "toolPendingBg"
 	| "toolSuccessBg"
-	| "toolErrorBg";
+	| "toolErrorBg"
+	| "toolDiffAddedBg"
+	| "toolDiffRemovedBg";
 
 type ColorMode = "truecolor" | "256color";
 
@@ -585,6 +589,8 @@ function createTheme(themeJson: ThemeJson, mode?: ColorMode, sourcePath?: string
 		"toolPendingBg",
 		"toolSuccessBg",
 		"toolErrorBg",
+		"toolDiffAddedBg",
+		"toolDiffRemovedBg",
 	]);
 	for (const [key, value] of Object.entries(resolvedColors)) {
 		if (bgColorKeys.has(key)) {

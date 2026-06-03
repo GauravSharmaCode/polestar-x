@@ -1,6 +1,7 @@
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionFactory } from "../../../coding-agent/src/core/extensions/types.ts";
+import { getMarkdownTheme } from "../../../coding-agent/src/modes/interactive/theme/theme.ts";
 import { connectMcpBridge, disconnectMcpBridge, clients as mcpClients } from "../mcp/bridge.ts";
 import { createMemoryBackend } from "../memory/backend.ts";
 import { formatHistoricalMemoryBlock } from "../memory/format.ts";
@@ -292,10 +293,18 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		}),
 		async execute(_id, params) {
 			const results = await memory.search(params.query);
+			const formatted = formatHistoricalMemoryBlock(results) || "No matches found.";
 			return {
-				content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
+				content: [{ type: "text", text: formatted }],
 				details: results,
 			};
+		},
+		renderResult(result, _options, _theme, ctx) {
+			if (ctx.isError || (result as any).isError) return new Text("");
+			const content = result.content[0];
+			const outputText = content && "text" in content ? content.text : "";
+			if (!ctx.executionStarted || !ctx.argsComplete) return new Text("");
+			return new Markdown(outputText || "Searching memory...", 0, 0, getMarkdownTheme());
 		},
 	});
 

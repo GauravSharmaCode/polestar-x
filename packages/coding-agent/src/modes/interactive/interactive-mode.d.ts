@@ -5,7 +5,6 @@
 import { type ImageContent } from "@earendil-works/pi-ai";
 import { type AgentSessionRuntime } from "../../core/agent-session-runtime.ts";
 import { SessionManager } from "../../core/session-manager.ts";
-import { type LatestPiRelease } from "../../utils/version-check.ts";
 export declare function formatResumeCommand(sessionManager: SessionManager): string | undefined;
 export declare function isApiKeyLoginProvider(
 	providerId: string,
@@ -115,14 +114,7 @@ export declare class InteractiveMode {
 	 * Initializes the UI, shows warnings, processes initial messages, and starts the interactive loop.
 	 */
 	run(): Promise<void>;
-	private checkForPackageUpdates;
 	private checkTmuxKeyboardSetup;
-	/**
-	 * Get changelog entries to display on startup.
-	 * Only shows new entries since last seen version, skips for resumed sessions.
-	 */
-	private getChangelogForDisplay;
-	private reportInstallTelemetry;
 	private getMarkdownThemeWithSettings;
 	private formatDisplayPath;
 	private formatExtensionDisplayPath;
@@ -299,8 +291,6 @@ export declare class InteractiveMode {
 	clearEditor(): void;
 	showError(errorMessage: string): void;
 	showWarning(warningMessage: string): void;
-	showNewVersionNotification(release: LatestPiRelease): void;
-	showPackageUpdateNotification(packages: string[]): void;
 	/**
 	 * Get all queued messages (read-only).
 	 * Combines session queue and compaction queue.

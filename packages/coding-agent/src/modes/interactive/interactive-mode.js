@@ -7,10 +7,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getProviders, } from "@earendil-works/pi-ai";
-import { CombinedAutocompleteProvider, Container, fuzzyFilter, getCapabilities, hyperlink, Loader, Markdown, matchesKey, ProcessTerminal, Spacer, setKeybindings, Text, TruncatedText, TUI, visibleWidth, } from "@earendil-works/pi-tui";
+import { CombinedAutocompleteProvider, Container, fuzzyFilter, Loader, Markdown, matchesKey, ProcessTerminal, Spacer, setKeybindings, Text, TruncatedText, TUI, visibleWidth, } from "@earendil-works/pi-tui";
 import chalk from "chalk";
 import { spawn, spawnSync } from "child_process";
-import { APP_NAME, APP_TITLE, getAgentDir, getAuthPath, getDebugLogPath, getDocsPath, getShareViewerUrl, VERSION, } from "../../config.js";
+import { APP_NAME, APP_TITLE, getAuthPath, getDebugLogPath, getDocsPath, getShareViewerUrl, VERSION, } from "../../config.js";
 import { parseSkillBlock } from "../../core/agent-session.js";
 import { SessionImportFileNotFoundError } from "../../core/agent-session-runtime.js";
 import { FooterDataProvider } from "../../core/footer-data-provider.js";
@@ -18,21 +18,17 @@ import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/htt
 import { KeybindingsManager } from "../../core/keybindings.js";
 import { createCompactionSummaryMessage } from "../../core/messages.js";
 import { defaultModelPerProvider, findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.js";
-import { DefaultPackageManager } from "../../core/package-manager.js";
 import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "../../core/provider-display-names.js";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.js";
 import { SessionManager } from "../../core/session-manager.js";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.js";
-import { isInstallTelemetryEnabled } from "../../core/telemetry.js";
-import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.js";
+import { getChangelogPath, parseChangelog } from "../../utils/changelog.js";
 import { copyToClipboard } from "../../utils/clipboard.js";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.js";
 import { parseGitUrl } from "../../utils/git.js";
 import { getCwdRelativePath } from "../../utils/paths.js";
-import { getPiUserAgent } from "../../utils/pi-user-agent.js";
 import { killTrackedDetachedChildren } from "../../utils/shell.js";
 import { ensureTool } from "../../utils/tools-manager.js";
-import { checkForNewPiVersion } from "../../utils/version-check.js";
 import { ArminComponent } from "./components/armin.js";
 import { AssistantMessageComponent } from "./components/assistant-message.js";
 import { BashExecutionComponent } from "./components/bash-execution.js";
@@ -407,8 +403,6 @@ export class InteractiveMode {
         if (this.isInitialized)
             return;
         this.registerSignalHandlers();
-        // Load changelog (only show new entries, skip for resumed sessions)
-        this.changelogMarkdown = this.getChangelogForDisplay();
         // Ensure fd and rg are available (downloads if missing, adds to PATH via getBinDir)
         // Both are needed: fd for autocomplete, rg for grep tool and bash commands
         const [fdPath] = await Promise.all([ensureTool("fd"), ensureTool("rg")]);
@@ -524,18 +518,6 @@ export class InteractiveMode {
      */
     async run() {
         await this.init();
-        // Start version check asynchronously
-        checkForNewPiVersion(this.version).then((newRelease) => {
-            if (newRelease) {
-                this.showNewVersionNotification(newRelease);
-            }
-        });
-        // Start package update check asynchronously
-        this.checkForPackageUpdates().then((updates) => {
-            if (updates.length > 0) {
-                this.showPackageUpdateNotification(updates);
-            }
-        });
         // Check tmux keyboard setup asynchronously
         this.checkTmuxKeyboardSetup().then((warning) => {
             if (warning) {
@@ -588,23 +570,6 @@ export class InteractiveMode {
             }
         }
     }
-    async checkForPackageUpdates() {
-        if (process.env.PI_OFFLINE) {
-            return [];
-        }
-        try {
-            const packageManager = new DefaultPackageManager({
-                cwd: this.sessionManager.getCwd(),
-                agentDir: getAgentDir(),
-                settingsManager: this.settingsManager,
-            });
-            const updates = await packageManager.checkForAvailableUpdates();
-            return updates.map((update) => update.displayName);
-        }
-        catch {
-            return [];
-        }
-    }
     async checkTmuxKeyboardSetup() {
         if (!process.env.TMUX)
             return undefined;
@@ -645,48 +610,6 @@ export class InteractiveMode {
             return `tmux extended-keys-format is xterm. ${APP_TITLE} works best with csi-u. Add \`set -g extended-keys-format csi-u\` to ~/.tmux.conf and restart tmux.`;
         }
         return undefined;
-    }
-    /**
-     * Get changelog entries to display on startup.
-     * Only shows new entries since last seen version, skips for resumed sessions.
-     */
-    getChangelogForDisplay() {
-        // Skip changelog for resumed/continued sessions (already have messages)
-        if (this.session.state.messages.length > 0) {
-            return undefined;
-        }
-        const lastVersion = this.settingsManager.getLastChangelogVersion();
-        const changelogPath = getChangelogPath();
-        const entries = parseChangelog(changelogPath);
-        if (!lastVersion) {
-            // Fresh install - record the version, send telemetry, don't show changelog
-            this.settingsManager.setLastChangelogVersion(VERSION);
-            this.reportInstallTelemetry(VERSION);
-            return undefined;
-        }
-        const newEntries = getNewEntries(entries, lastVersion);
-        if (newEntries.length > 0) {
-            this.settingsManager.setLastChangelogVersion(VERSION);
-            this.reportInstallTelemetry(VERSION);
-            return newEntries.map((e) => e.content).join("\n\n");
-        }
-        return undefined;
-    }
-    reportInstallTelemetry(version) {
-        if (process.env.PI_OFFLINE) {
-            return;
-        }
-        if (!isInstallTelemetryEnabled(this.settingsManager)) {
-            return;
-        }
-        void fetch(`https://pi.dev/api/report-install?version=${encodeURIComponent(version)}`, {
-            headers: {
-                "User-Agent": getPiUserAgent(version),
-            },
-            signal: AbortSignal.timeout(5000),
-        })
-            .then(() => undefined)
-            .catch(() => undefined);
     }
     getMarkdownThemeWithSettings() {
         return {
@@ -3001,39 +2924,6 @@ export class InteractiveMode {
     showWarning(warningMessage) {
         this.chatContainer.addChild(new Spacer(1));
         this.chatContainer.addChild(new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0));
-        this.ui.requestRender();
-    }
-    showNewVersionNotification(release) {
-        const action = theme.fg("accent", `${APP_NAME} update`);
-        const updateInstruction = theme.fg("muted", `New version ${release.version} is available. Run `) + action;
-        const changelogUrl = "https://pi.dev/changelog";
-        const changelogLink = getCapabilities().hyperlinks
-            ? hyperlink(theme.fg("accent", "open changelog"), changelogUrl)
-            : theme.fg("accent", changelogUrl);
-        const changelogLine = theme.fg("muted", "Changelog: ") + changelogLink;
-        const note = release.note?.trim();
-        this.chatContainer.addChild(new Spacer(1));
-        this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-        this.chatContainer.addChild(new Text(`${theme.bold(theme.fg("warning", "Update Available"))}\n${updateInstruction}`, 1, 0));
-        if (note) {
-            this.chatContainer.addChild(new Spacer(1));
-            this.chatContainer.addChild(new Markdown(note, 1, 0, this.getMarkdownThemeWithSettings(), {
-                color: (text) => theme.fg("muted", text),
-            }));
-            this.chatContainer.addChild(new Spacer(1));
-        }
-        this.chatContainer.addChild(new Text(changelogLine, 1, 0));
-        this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-        this.ui.requestRender();
-    }
-    showPackageUpdateNotification(packages) {
-        const action = theme.fg("accent", `${APP_NAME} update`);
-        const updateInstruction = theme.fg("muted", "Package updates are available. Run ") + action;
-        const packageLines = packages.map((pkg) => `- ${pkg}`).join("\n");
-        this.chatContainer.addChild(new Spacer(1));
-        this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-        this.chatContainer.addChild(new Text(`${theme.bold(theme.fg("warning", "Package Updates Available"))}\n${updateInstruction}\n${theme.fg("muted", "Packages:")}\n${packageLines}`, 1, 0));
-        this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
         this.ui.requestRender();
     }
     /**

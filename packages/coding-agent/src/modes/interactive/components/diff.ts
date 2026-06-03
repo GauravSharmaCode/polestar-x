@@ -1,5 +1,11 @@
 import * as Diff from "diff";
-import { theme } from "../theme/theme.ts";
+import { getLanguageFromPath, highlightCode, theme } from "../theme/theme.ts";
+
+let globalDiffViewStyle: "inline" | "gutter" = "inline";
+
+export function setGlobalDiffViewStyle(style: "inline" | "gutter") {
+	globalDiffViewStyle = style;
+}
 
 /**
  * Parse diff line to extract prefix, line number, and content.
@@ -66,7 +72,7 @@ function renderIntraLineDiff(oldContent: string, newContent: string): { removedL
 }
 
 export interface RenderDiffOptions {
-	/** File path (unused, kept for API compatibility) */
+	/** File path (used for syntax highlighting) */
 	filePath?: string;
 }
 
@@ -76,7 +82,15 @@ export interface RenderDiffOptions {
  * - Removed lines: red, with inverse on changed tokens
  * - Added lines: green, with inverse on changed tokens
  */
-export function renderDiff(diffText: string, _options: RenderDiffOptions = {}): string {
+export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
+	const style = globalDiffViewStyle;
+	if (style === "gutter") {
+		return renderDiffGutter(diffText, options.filePath);
+	}
+	return renderDiffInline(diffText);
+}
+
+function renderDiffInline(diffText: string): string {
 	const lines = diffText.split("\n");
 	const result: string[] = [];
 
@@ -140,6 +154,84 @@ export function renderDiff(diffText: string, _options: RenderDiffOptions = {}): 
 			// Context line
 			result.push(theme.fg("toolDiffContext", ` ${parsed.lineNum} ${replaceTabs(parsed.content)}`));
 			i++;
+		}
+	}
+
+	return result.join("\n");
+}
+
+function renderDiffGutter(diffText: string, filePath?: string): string {
+	const lines = diffText.split("\n");
+	const result: string[] = [];
+	const lang = filePath ? getLanguageFromPath(filePath) : undefined;
+
+	// Extract raw content for syntax highlighting
+	const rawLines = lines.map((line) => {
+		const parsed = parseDiffLine(line);
+		return parsed ? replaceTabs(parsed.content) : "";
+	});
+
+	const highlightedLines = lang ? highlightCode(rawLines.join("\n"), lang) : rawLines;
+
+	let oldLineNum = 0;
+	let newLineNum = 0;
+	let inHunk = false;
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const parsed = parseDiffLine(line);
+		const highlightedContent = highlightedLines[i] ?? rawLines[i];
+
+		if (!parsed) {
+			const hunkMatch = line.match(/^@@ -(\d+),?\d* \+(\d+),?\d* @@/);
+			if (hunkMatch) {
+				oldLineNum = parseInt(hunkMatch[1], 10);
+				newLineNum = parseInt(hunkMatch[2], 10);
+				inHunk = true;
+				// Visual break
+				result.push(theme.fg("mdHr", `──────┼${"─".repeat(50)}`));
+			} else if (line.startsWith("---") || line.startsWith("+++")) {
+				result.push(theme.fg("toolDiffContext", line));
+			} else {
+				result.push(theme.fg("toolDiffContext", line));
+			}
+			continue;
+		}
+
+		// Use tracked line numbers if missing from parsed, else use parsed
+		let displayLineNumStr = parsed.lineNum.trim();
+		if (!displayLineNumStr && inHunk) {
+			if (parsed.prefix === "-") {
+				displayLineNumStr = String(oldLineNum++);
+			} else if (parsed.prefix === "+") {
+				displayLineNumStr = String(newLineNum++);
+			} else {
+				displayLineNumStr = String(newLineNum);
+				oldLineNum++;
+				newLineNum++;
+			}
+		} else if (displayLineNumStr) {
+			// If we had line numbers, let's sync up our tracking just in case
+			const parsedNum = parseInt(displayLineNumStr, 10);
+			if (!Number.isNaN(parsedNum)) {
+				if (parsed.prefix === "-") {
+					oldLineNum = parsedNum + 1;
+				} else {
+					newLineNum = parsedNum + 1;
+				}
+			}
+		}
+
+		const lineNumStr = displayLineNumStr.padStart(4, " ");
+
+		if (parsed.prefix === "-") {
+			result.push(
+				theme.bg("toolDiffRemovedBg", theme.fg("toolDiffRemoved", `- ${lineNumStr} │ `) + highlightedContent),
+			);
+		} else if (parsed.prefix === "+") {
+			result.push(theme.bg("toolDiffAddedBg", theme.fg("toolDiffAdded", `+ ${lineNumStr} │ `) + highlightedContent));
+		} else {
+			result.push(theme.fg("toolDiffContext", `  ${lineNumStr} │ `) + highlightedContent);
 		}
 	}
 

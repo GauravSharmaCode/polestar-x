@@ -35,6 +35,7 @@ export interface TerminalSettings {
 	imageWidthCells?: number; // default: 60 (preferred inline image width in terminal cells)
 	clearOnShrink?: boolean; // default: false (clear empty rows when content shrinks)
 	showTerminalProgress?: boolean; // default: false (OSC 9;4 terminal progress indicators)
+	diffViewStyle?: "inline" | "gutter"; // default: "inline"
 }
 
 export interface ImageSettings {
@@ -925,6 +926,19 @@ export class SettingsManager {
 
 	getThinkingBudgets(): ThinkingBudgetsSettings | undefined {
 		return this.settings.thinkingBudgets;
+	}
+
+	getDiffViewStyle(): "inline" | "gutter" {
+		return this.settings.terminal?.diffViewStyle ?? "inline";
+	}
+
+	setDiffViewStyle(style: "inline" | "gutter"): void {
+		if (!this.globalSettings.terminal) {
+			this.globalSettings.terminal = {};
+		}
+		this.globalSettings.terminal.diffViewStyle = style;
+		this.markModified("terminal", "diffViewStyle");
+		this.save();
 	}
 
 	getShowImages(): boolean {
