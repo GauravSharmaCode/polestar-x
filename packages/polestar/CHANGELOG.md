@@ -5,6 +5,15 @@ All notable changes to PoleStar-X will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Modes Refactor**: Added `spec` and `plan` modes, enabling isolated environment analysis with a dedicated `restricted_write` tool allowing writes only to `.polestar/docs/spec.md` and `.polestar/docs/plan.md`.
+- **Model Routing**: Enforced strict version sorting (e.g., preferring 4.6 over 4.5) and provider interleaving in fallback chains. Implemented mode-aware routing ensuring high reasoning levels for `think` and `plan` modes.
+- **Sub-Agent Config**: Bootstrapped default `research.md` subagent config in `.polestar/agents/` during `/init-config`.
+- **New Commands**: Added `/spec` and `/draft` commands to toggle Spec mode, and updated `/plan` to toggle Plan mode.
+
 ## [0.1.0] - 2026-06-01
 
 ### Added
