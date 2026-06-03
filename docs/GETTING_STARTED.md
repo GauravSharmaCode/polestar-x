@@ -7,6 +7,22 @@ Welcome to **PoleStar-X** — a sovereign, self-configuring fork of pi with smar
 ## Installation
 
 ```bash
+# Global install (recommended)
+npm install -g @gauravsharmacode/polestar-x
+
+# Or run without installing
+npx @gauravsharmacode/polestar-x
+```
+
+Then start the agent:
+
+```bash
+polestar
+```
+
+### Install from source (development)
+
+```bash
 npm install --ignore-scripts
 npm run build
 npx polestar
