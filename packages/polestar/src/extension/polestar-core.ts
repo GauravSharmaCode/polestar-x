@@ -5,7 +5,13 @@ import { connectMcpBridge, disconnectMcpBridge, clients as mcpClients } from "..
 import { createMemoryBackend } from "../memory/backend.ts";
 import { formatHistoricalMemoryBlock } from "../memory/format.ts";
 // Import Think/Write modes and MCP Bridge
-import { POLESTAR_DEFAULT_TOOLS, planExitTool, setExecutionMode } from "../modes/think-write.ts";
+import {
+	getExecutionMode,
+	POLESTAR_DEFAULT_TOOLS,
+	planExitTool,
+	restrictedWriteTool,
+	setExecutionMode,
+} from "../modes/think-write.ts";
 import { composeSystemPrompt } from "../prompts/compose-system-prompt.ts";
 import { INIT_ONBOARDING_PROMPT } from "../prompts/init-onboarding.ts";
 import type { RoutingDecision } from "../router/model-router.ts";
@@ -118,6 +124,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	pi.registerTool(questionTool);
 	pi.registerTool(manageRuleTool);
 	pi.registerTool(planExitTool);
+	pi.registerTool(restrictedWriteTool);
 	pi.registerTool(taskTool);
 
 	pi.on("resources_discover", async (event) => {
@@ -203,6 +210,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 			previousFailures: state.consecutiveFailures,
 			currentModel: ctx.model,
 			availableModels: available,
+			currentMode: getExecutionMode(),
 		});
 
 		await applyRoutingDecision(decision, ctx);
@@ -250,6 +258,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 				previousFailures: 0,
 				currentModel: ctx.model,
 				availableModels: available,
+				currentMode: getExecutionMode(),
 			});
 			await applyRoutingDecision(initialDecision, ctx);
 		}
@@ -413,6 +422,15 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 				writeFileSync(todosPath, `# PoleStar-X Todos\n\n\`\`\`json\n[\n]\n\`\`\`\n`, "utf-8");
 			}
 
+			const researchAgentPath = join(dir, "agents", "research.md");
+			if (!existsSync(researchAgentPath)) {
+				writeFileSync(
+					researchAgentPath,
+					`---\nname: research\ndescription: Subagent specialized for codebase exploration and reading\nmodel: gemini-2.5-flash\ntools: read, glob, grep, memory_search\n---\n\nYou are a specialized research agent. Your goal is to explore the codebase and answer questions quickly and accurately.\nUse your read, glob, and grep tools to find the answers. Provide concise summaries.`,
+					"utf-8",
+				);
+			}
+
 			ctx.ui.notify(`Initialized ${dir} config directory.`, "info");
 		},
 	});
@@ -443,9 +461,23 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	});
 
 	pi.registerCommand("plan", {
-		description: "Alias for /think: Switch to Think (read-only planning) mode",
+		description: "Switch to Plan mode (read-only + plan.md write access)",
 		handler: async (_args, ctx) => {
-			setExecutionMode(pi, "think", ctx);
+			setExecutionMode(pi, "plan", ctx);
+		},
+	});
+
+	pi.registerCommand("spec", {
+		description: "Switch to Spec mode (read-only + spec.md write access)",
+		handler: async (_args, ctx) => {
+			setExecutionMode(pi, "spec", ctx);
+		},
+	});
+
+	pi.registerCommand("draft", {
+		description: "Alias for /spec: Switch to Spec mode",
+		handler: async (_args, ctx) => {
+			setExecutionMode(pi, "spec", ctx);
 		},
 	});
 
