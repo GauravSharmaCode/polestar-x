@@ -27,6 +27,7 @@ export interface RoutingContext {
 	availableModels: Model<any>[];
 	preferLocal?: boolean;
 	budgetRemaining?: number;
+	currentMode?: string;
 }
 
 function isLocalModel(model: { provider: string; id: string }): boolean {
@@ -37,19 +38,62 @@ function isLocalModel(model: { provider: string; id: string }): boolean {
 	);
 }
 
+function getVersion(model: Model<any>): number {
+	const match = model.id.match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+	if (!match) return 0;
+	return parseFloat(`${match[1]}.${match[2] || "0"}${match[3] || "0"}`);
+}
+
+function sortTier(models: Model<any>[]): Model<any>[] {
+	return models.sort((a, b) => {
+		const aThink = /think|reasoning/i.test(a.id) ? 1 : 0;
+		const bThink = /think|reasoning/i.test(b.id) ? 1 : 0;
+		const aVer = getVersion(a);
+		const bVer = getVersion(b);
+		if (aVer !== bVer) return bVer - aVer;
+		return bThink - aThink;
+	});
+}
+
 function buildTiers(models: Model<any>[]): ModelTier {
+	const premium = models.filter((m) => /opus|gpt-5|claude-4|reasoning|claude-3-7|o1|o3/i.test(m.id));
+	const standard = models.filter((m) => /sonnet|gpt-4o|pro(?!-mini)/i.test(m.id) && !premium.includes(m));
+	const fast = models.filter(
+		(m) => /haiku|flash|mini|nano/i.test(m.id) && !premium.includes(m) && !standard.includes(m),
+	);
+	const local = models.filter((m) => isLocalModel(m));
+
 	return {
-		premium: models.filter((m) => /opus|gpt-5|claude-4|reasoning/i.test(m.id)),
-		standard: models.filter((m) => /sonnet|gpt-4o|pro(?!-mini)/i.test(m.id)),
-		fast: models.filter((m) => /haiku|flash|mini|nano/i.test(m.id)),
-		local: models.filter((m) => isLocalModel(m)),
+		premium: sortTier(premium),
+		standard: sortTier(standard),
+		fast: sortTier(fast),
+		local: sortTier(local),
 	};
 }
 
 function buildFallbackChain(primary: Model<any> | undefined, models: Model<any>[]): Model<any>[] {
-	if (!primary) return [...models];
-	const rest = models.filter((m) => m !== primary && m.id !== primary.id);
-	return [primary, ...rest];
+	const chain = primary ? [primary] : [];
+	const rest = models.filter((m) => !primary || (m !== primary && m.id !== primary.id));
+
+	const groups = new Map<string, Model<any>[]>();
+	for (const m of rest) {
+		const g = groups.get(m.provider) || [];
+		g.push(m);
+		groups.set(m.provider, g);
+	}
+
+	let hasMore = true;
+	while (hasMore) {
+		hasMore = false;
+		for (const [_, list] of groups) {
+			if (list.length > 0) {
+				chain.push(list.shift()!);
+				hasMore = true;
+			}
+		}
+	}
+
+	return chain;
 }
 
 function escalateThinkingLevel(level: ThinkingLevel): ThinkingLevel {
@@ -124,9 +168,19 @@ function pickForClass(
 		};
 	}
 
-	if (taskClass === "architecture") {
-		const model = pickFromTiers(tiers.premium, tiers.standard, available);
-		const baseThinking = classification.suggestedThinking === "off" ? "medium" : classification.suggestedThinking;
+	const isThinkingMode = ctx.currentMode === "think" || ctx.currentMode === "plan";
+	const isSpecMode = ctx.currentMode === "spec";
+
+	if (taskClass === "architecture" || isThinkingMode || isSpecMode) {
+		const prefer =
+			isThinkingMode || isSpecMode ? tiers.premium : tiers.premium.length > 0 ? tiers.premium : tiers.standard;
+		const model = pickFromTiers(prefer, tiers.standard, available);
+
+		let baseThinking = classification.suggestedThinking;
+		if (isThinkingMode) baseThinking = "high";
+		else if (isSpecMode && baseThinking === "off") baseThinking = "medium";
+		else if (baseThinking === "off") baseThinking = "medium";
+
 		const thinkingLevel = escalate ? escalateThinkingLevel(baseThinking) : baseThinking;
 		const fallback = [...tiers.premium, ...tiers.standard, ...tiers.fast].filter((m) => !isLocalModel(m));
 		return {
@@ -134,7 +188,7 @@ function pickForClass(
 			complexity: classification.complexity,
 			model,
 			thinkingLevel,
-			reason: `architecture:${escalate ? "escalated" : "default"}`,
+			reason: `architecture:${escalate ? "escalated" : "default"}:${ctx.currentMode || "none"}`,
 			fallbackChain: buildFallbackChain(model, fallback),
 		};
 	}
