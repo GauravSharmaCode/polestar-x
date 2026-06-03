@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
 
-export type ExecutionMode = "think" | "write";
+export type ExecutionMode = "think" | "spec" | "plan" | "write";
 
 let currentMode: ExecutionMode = "write";
 let originalActiveTools: string[] = [];
@@ -36,13 +36,14 @@ export function getExecutionMode(): ExecutionMode {
 export function setExecutionMode(pi: ExtensionAPI, mode: ExecutionMode, ctx: any) {
 	currentMode = mode;
 
-	if (mode === "think") {
-		// Save currently active tools before filtering
+	if (originalActiveTools.length === 0) {
 		originalActiveTools = pi.getActiveTools();
 		if (originalActiveTools.length === 0) {
 			originalActiveTools = [...POLESTAR_DEFAULT_TOOLS];
 		}
+	}
 
+	if (mode === "think") {
 		// Keep only non-mutating tools, and add plan_exit
 		const filtered = originalActiveTools.filter((name) => !MUTATING_TOOLS.includes(name));
 		if (!filtered.includes("plan_exit")) {
@@ -54,9 +55,26 @@ export function setExecutionMode(pi: ExtensionAPI, mode: ExecutionMode, ctx: any
 			ctx.ui.setStatus("mode", "⏸ think");
 			ctx.ui.notify("Switched to Think (read-only) mode. Modifying tools are disabled.", "info");
 		}
+	} else if (mode === "spec" || mode === "plan") {
+		const filtered = originalActiveTools.filter((name) => !MUTATING_TOOLS.includes(name));
+		if (!filtered.includes("plan_exit")) {
+			filtered.push("plan_exit");
+		}
+		// Add restricted write for the specific mode
+		filtered.push("restricted_write");
+
+		pi.setActiveTools(filtered);
+		if (ctx?.ui) {
+			const icon = mode === "spec" ? "📝" : "📋";
+			ctx.ui.setStatus("mode", `${icon} ${mode}`);
+			ctx.ui.notify(
+				`Switched to ${mode.charAt(0).toUpperCase() + mode.slice(1)} mode. Write restricted to .polestar/docs/${mode}.md.`,
+				"info",
+			);
+		}
 	} else {
 		// Restore full tools
-		let toRestore = originalActiveTools.filter((name) => name !== "plan_exit");
+		let toRestore = originalActiveTools.filter((name) => name !== "plan_exit" && name !== "restricted_write");
 		if (toRestore.length === 0) {
 			toRestore = [...POLESTAR_DEFAULT_TOOLS];
 		}
@@ -67,6 +85,38 @@ export function setExecutionMode(pi: ExtensionAPI, mode: ExecutionMode, ctx: any
 		}
 	}
 }
+
+const restrictedWriteParams = Type.Object({
+	content: Type.String({ description: "The content to write to the document" }),
+});
+
+export const restrictedWriteTool: ToolDefinition<typeof restrictedWriteParams> = {
+	name: "restricted_write",
+	label: "Restricted Write",
+	description: "Write content to the permitted specification or plan document.",
+	promptGuidelines: ["Always use this tool to save your spec or plan to the filesystem."],
+	parameters: restrictedWriteParams,
+	async execute(_id, params) {
+		const { writeFileSync, mkdirSync } = await import("node:fs");
+		const { join, dirname } = await import("node:path");
+
+		const mode = getExecutionMode();
+		if (mode !== "spec" && mode !== "plan") {
+			throw new Error("restricted_write can only be used in spec or plan mode.");
+		}
+
+		const targetFile = `.polestar/docs/${mode}.md`;
+		const fullPath = join(process.cwd(), targetFile);
+
+		mkdirSync(dirname(fullPath), { recursive: true });
+		writeFileSync(fullPath, params.content, "utf8");
+
+		return {
+			content: [{ type: "text", text: `Successfully wrote to ${targetFile}` }],
+			details: { file: targetFile },
+		};
+	},
+};
 
 const planExitParams = Type.Object({
 	explanation: Type.String({ description: "Explanation of the plan to be executed in Write mode" }),

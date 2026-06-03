@@ -63,8 +63,33 @@ describe("Think and Write Modes Controller", () => {
 		expect(activeTools).toContain("write");
 		expect(activeTools).toContain("apply_patch");
 		expect(activeTools).not.toContain("plan_exit");
+		expect(activeTools).not.toContain("restricted_write");
 
 		// Status line indicator should be updated
 		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "✎ write");
+	});
+
+	it("should filter mutating tools and add restricted_write for spec mode", () => {
+		setExecutionMode(mockPi, "spec", mockCtx);
+		expect(getExecutionMode()).toBe("spec");
+
+		expect(activeTools).not.toContain("edit");
+		expect(activeTools).not.toContain("write");
+		expect(activeTools).toContain("restricted_write");
+		expect(activeTools).toContain("plan_exit");
+
+		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "📝 spec");
+	});
+
+	it("should filter mutating tools and add restricted_write for plan mode", () => {
+		setExecutionMode(mockPi, "plan", mockCtx);
+		expect(getExecutionMode()).toBe("plan");
+
+		expect(activeTools).not.toContain("edit");
+		expect(activeTools).not.toContain("write");
+		expect(activeTools).toContain("restricted_write");
+		expect(activeTools).toContain("plan_exit");
+
+		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "📋 plan");
 	});
 });
