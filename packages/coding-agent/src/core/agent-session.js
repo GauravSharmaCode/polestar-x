@@ -12,6 +12,7 @@
  *
  * Modes use this class and add their own I/O layer on top.
  */
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { clampThinkingLevel, cleanupSessionResources, getSupportedThinkingLevels, isContextOverflow, modelsAreEqual, resetApiProviders, streamSimple, } from "@earendil-works/pi-ai";
@@ -86,6 +87,7 @@ export class AgentSession {
     // Extension system
     _extensionRunner;
     _turnIndex = 0;
+    _toolCallCounts = new Map();
     _resourceLoader;
     _customTools;
     _baseToolDefinitions = new Map();
@@ -196,6 +198,21 @@ export class AgentSession {
             }
         };
         this.agent.afterToolCall = async ({ toolCall, args, result, isError }) => {
+            const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
+            const toolKey = `${toolCall.name}:${argsHash}`;
+            const count = (this._toolCallCounts.get(toolKey) || 0) + 1;
+            this._toolCallCounts.set(toolKey, count);
+            if (count >= 3 && this._extensionUIContext) {
+                const confirmed = await this._extensionUIContext.confirm("Doom Loop Detected", "I've run this exact command 3 times. Continue?");
+                if (!confirmed) {
+                    await this.abort();
+                    return {
+                        content: [{ type: "text", text: "User aborted due to doom loop." }],
+                        isError: true,
+                        terminate: true,
+                    };
+                }
+            }
             const runner = this._extensionRunner;
             if (!runner.hasHandlers("tool_result")) {
                 return undefined;
@@ -375,6 +392,9 @@ export class AgentSession {
             this._turnIndex++;
         }
         else if (event.type === "message_start") {
+            if (event.message.role === "user") {
+                this._toolCallCounts.clear();
+            }
             const extensionEvent = {
                 type: "message_start",
                 message: event.message,

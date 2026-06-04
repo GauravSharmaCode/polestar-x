@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model Routing**: Enforced strict version sorting (e.g., preferring 4.6 over 4.5) and provider interleaving in fallback chains. Implemented mode-aware routing ensuring high reasoning levels for `think` and `plan` modes.
 - **Sub-Agent Config**: Bootstrapped default `research.md` subagent config in `.polestar/agents/` during `/init-config`.
 - **New Commands**: Added `/spec` and `/draft` commands to toggle Spec mode, and updated `/plan` to toggle Plan mode.
+- Added lightweight Markdown UI rendering for `websearch` and `memory_search` tools to display formatted results in the terminal instead of raw output.
 
 ## [0.1.0] - 2026-06-01
 

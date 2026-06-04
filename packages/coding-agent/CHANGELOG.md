@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added dual inline and gutter rendering modes for the diff view with syntax highlighting support.
+- Added `diffViewStyle` user setting and theme variables for customizable diff rendering colors.
+
 ### Fixed
 
 - Fixed opening and listing very large JSONL session files by reading session entries line-by-line instead of materializing the full file as one string ([#5231](https://github.com/earendil-works/pi/issues/5231)).

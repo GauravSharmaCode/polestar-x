@@ -1,6 +1,8 @@
+import { Markdown, Text } from "@earendil-works/pi-tui";
 import * as htmlparser2 from "htmlparser2";
 import { Type } from "typebox";
 import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
+import { getMarkdownTheme } from "../../../coding-agent/src/modes/interactive/theme/theme.ts";
 
 interface SearchResult {
 	title: string;
@@ -220,5 +222,12 @@ export const webSearchTool: ToolDefinition<typeof webSearchParams> = {
 				resultsCount: results.length,
 			},
 		};
+	},
+	renderResult(result, _options, _theme, ctx) {
+		if (ctx.isError || (result as any).isError) return new Text("");
+		const content = result.content[0];
+		const outputText = content && "text" in content ? content.text : "";
+		if (!ctx.executionStarted || !ctx.argsComplete) return new Text("");
+		return new Markdown(outputText || "Searching...", 0, 0, getMarkdownTheme());
 	},
 };

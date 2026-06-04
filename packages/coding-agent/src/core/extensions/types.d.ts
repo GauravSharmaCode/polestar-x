@@ -946,8 +946,11 @@ export interface RegisteredCommand {
 export interface ResolvedCommand extends RegisteredCommand {
 	invocationName: string;
 }
-// biome-ignore lint/suspicious/noConfusingVoidType: handlers can return void or R
-export type ExtensionHandler<E, R = undefined> = (event: E, ctx: ExtensionContext) => Promise<R | void> | R | void;
+/** Handler function type for events */
+export type ExtensionHandler<E, R = undefined> = (
+	event: E,
+	ctx: ExtensionContext,
+) => Promise<R | undefined> | R | undefined;
 /**
  * ExtensionAPI passed to extension factory functions.
  */

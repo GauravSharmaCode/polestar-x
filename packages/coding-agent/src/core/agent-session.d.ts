@@ -213,6 +213,7 @@ export declare class AgentSession {
 	private _pendingBashMessages;
 	private _extensionRunner;
 	private _turnIndex;
+	private _toolCallCounts;
 	private _resourceLoader;
 	private _customTools;
 	private _baseToolDefinitions;
