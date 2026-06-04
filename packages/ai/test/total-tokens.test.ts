@@ -179,7 +179,7 @@ describe("totalTokens field", () => {
 
 	describe.skipIf(!process.env.OPENAI_API_KEY)("OpenAI Responses", () => {
 		it("gpt-4o - should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
-			const llm = getModel("openai", "gpt-4o");
+			const llm = getModel("openai", "gpt-4.1");
 
 			console.log(`\nOpenAI Responses / ${llm.id}:`);
 			const { first, second } = await testTotalTokensWithCache(llm);
@@ -666,7 +666,7 @@ describe("totalTokens field", () => {
 		);
 
 		it(
-			"google/gemini-2.0-flash-001 - should return totalTokens equal to sum of components",
+			"google/gemini-2.5-flash - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
 				const llm = getModel("openrouter", "google/gemini-2.5-flash");

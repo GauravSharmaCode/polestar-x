@@ -175,7 +175,7 @@ describe("Context overflow error handling", () => {
 
 	describe.skipIf(!process.env.OPENAI_API_KEY)("OpenAI Responses", () => {
 		it("gpt-4o - should detect overflow via isContextOverflow", async () => {
-			const model = getModel("openai", "gpt-4o");
+			const model = getModel("openai", "gpt-4.1");
 			const result = await testContextOverflow(model, process.env.OPENAI_API_KEY!);
 			logResult(result);
 
