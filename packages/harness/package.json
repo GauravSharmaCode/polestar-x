@@ -1,6 +1,6 @@
 {
 	"name": "@polestar-x/harness",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "PoleStar-X harness facade over forked pi agent core",
 	"type": "module",
 	"private": true,

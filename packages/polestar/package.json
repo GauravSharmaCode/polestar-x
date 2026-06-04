@@ -49,8 +49,8 @@
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"dependencies": {
-		"@earendil-works/pi-coding-agent": "^0.78.0",
-		"@earendil-works/pi-tui": "^0.78.0",
+		"@earendil-works/pi-coding-agent": "^0.78.1",
+		"@earendil-works/pi-tui": "^0.78.1",
 		"@gauravsharmacode/pi-memory": "1.0.0",
 		"htmlparser2": "9.1.0",
 		"turndown": "7.2.0"

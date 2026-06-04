@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
 
 const TodoItemSchema = Type.Object({
 	content: Type.String({ description: "Brief description of the task" }),

@@ -1,8 +1,8 @@
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
-import { getAgentDir } from "../../../coding-agent/src/index.ts";
 
 const manageRuleParams = Type.Object({
 	rule: Type.String({ description: "The rule text or guideline to append" }),

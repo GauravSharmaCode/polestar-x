@@ -1,7 +1,7 @@
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import * as htmlparser2 from "htmlparser2";
 import TurndownService from "turndown";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
 
 const webFetchParams = Type.Object({
 	url: Type.String({ description: "The URL to fetch content from" }),

@@ -2524,7 +2524,7 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/quit") {
+			if (text === "/quit" || text === "/exit") {
 				this.editor.setText("");
 				await this.shutdown();
 				return;
@@ -3214,7 +3214,7 @@ export class InteractiveMode {
 			process.exit(0);
 		}
 
-		// Interactive quit (Ctrl+D, Ctrl+C, /quit, extension shutdown()). Stop the
+		// Interactive quit (Ctrl+D, Ctrl+C, /quit, /exit, extension shutdown()). Stop the
 		// TUI before emitting shutdown events so extension UI cleanup cannot repaint
 		// the final frame while the process is exiting.
 		// Drain any in-flight Kitty key release events before stopping.

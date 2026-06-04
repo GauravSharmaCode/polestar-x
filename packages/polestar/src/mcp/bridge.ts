@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { ExtensionAPI } from "../../../coding-agent/src/core/extensions/types.ts";
 import { McpClient } from "./client.ts";
 
 export interface McpServerStatus {

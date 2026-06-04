@@ -4,10 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
 import { StringEnum } from "@earendil-works/pi-ai";
+import type { AgentToolUpdateCallback, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, getMarkdownTheme, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { AgentToolUpdateCallback, ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
-import { getAgentDir, getMarkdownTheme, parseFrontmatter } from "../../../coding-agent/src/index.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;

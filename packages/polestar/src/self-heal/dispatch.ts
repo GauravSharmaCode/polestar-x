@@ -1,5 +1,5 @@
 import type { Model } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "../../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { modelRouter } from "../router/model-router.ts";
 import { isAgentSessionRetryableError } from "./builtin-retry.ts";
 import type { FailureClass } from "./classify-failure.ts";

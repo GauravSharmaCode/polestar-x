@@ -1,6 +1,6 @@
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
 
 interface QuestionOption {
 	value: string;

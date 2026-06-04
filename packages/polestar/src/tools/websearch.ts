@@ -1,8 +1,8 @@
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import * as htmlparser2 from "htmlparser2";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
-import { getMarkdownTheme } from "../../../coding-agent/src/modes/interactive/theme/theme.ts";
 
 interface SearchResult {
 	title: string;

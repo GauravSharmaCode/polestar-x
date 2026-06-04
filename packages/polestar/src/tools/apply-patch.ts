@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
-import { withFileMutationQueue } from "../../../coding-agent/src/core/tools/file-mutation-queue.ts";
 
 // Custom types for OpenCode-style patch
 export interface UpdateFileChunk {

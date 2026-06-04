@@ -1,5 +1,5 @@
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { ExtensionAPI, ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
 
 export type ExecutionMode = "think" | "spec" | "plan" | "write";
 

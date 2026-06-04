@@ -1,7 +1,7 @@
+import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionFactory } from "../../../coding-agent/src/core/extensions/types.ts";
-import { getMarkdownTheme } from "../../../coding-agent/src/modes/interactive/theme/theme.ts";
 import { connectMcpBridge, disconnectMcpBridge, clients as mcpClients } from "../mcp/bridge.ts";
 import { createMemoryBackend } from "../memory/backend.ts";
 import { formatHistoricalMemoryBlock } from "../memory/format.ts";
@@ -103,7 +103,10 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		const current = ctx.model;
 		const desired = decision.model;
 		const currentMatchesDesired =
-			Boolean(current && desired) && current.provider === desired.provider && current.id === desired.id;
+			current !== undefined &&
+			desired !== undefined &&
+			current.provider === desired.provider &&
+			current.id === desired.id;
 
 		if (desired && !currentMatchesDesired) {
 			const fallbackChain = decision.fallbackChain.length > 0 ? decision.fallbackChain : [desired];
@@ -204,7 +207,10 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		const available = ctx.modelRegistry.getAvailable();
 		if (available.length === 0) return;
 
-		const routingPrompt = buildRoutingPrompt(event.messages, state.initialPrompt ?? "");
+		const routingPrompt = buildRoutingPrompt(
+			event.messages as Array<{ role: string; content: unknown }>,
+			state.initialPrompt ?? "",
+		);
 		const decision = modelRouter.route({
 			prompt: routingPrompt,
 			turnCount: state.turnCount,
@@ -270,7 +276,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 				message: {
 					customType: "polestar_memory",
 					content: memoryBlock,
-					display: "Historical memory",
+					display: true,
 				},
 			};
 		}

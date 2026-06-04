@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored `/exit` as a quit alias for `/quit` in interactive mode ([#1303](https://github.com/badlogic/pi-mono/issues/1303)).
+
 ### Added
 
 - Added dual inline and gutter rendering modes for the diff view with syntax highlighting support.

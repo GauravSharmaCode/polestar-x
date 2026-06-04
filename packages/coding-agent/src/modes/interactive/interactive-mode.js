@@ -39,6 +39,7 @@ import { CountdownTimer } from "./components/countdown-timer.js";
 import { CustomEditor } from "./components/custom-editor.js";
 import { CustomMessageComponent } from "./components/custom-message.js";
 import { DaxnutsComponent } from "./components/daxnuts.js";
+import { setGlobalDiffViewStyle } from "./components/diff.js";
 import { DynamicBorder } from "./components/dynamic-border.js";
 import { EarendilAnnouncementComponent } from "./components/earendil-announcement.js";
 import { ExtensionEditorComponent } from "./components/extension-editor.js";
@@ -259,6 +260,7 @@ export class InteractiveMode {
         // Register themes from resource loader and initialize
         setRegisteredThemes(this.session.resourceLoader.getThemes().themes);
         initTheme(this.settingsManager.getTheme(), true);
+        setGlobalDiffViewStyle(this.settingsManager.getDiffViewStyle() || "inline");
     }
     getAutocompleteSourceTag(sourceInfo) {
         if (!sourceInfo) {
@@ -1140,6 +1142,7 @@ export class InteractiveMode {
         this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
         this.ui.setShowHardwareCursor(this.settingsManager.getShowHardwareCursor());
         this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
+        setGlobalDiffViewStyle(this.settingsManager.getDiffViewStyle() || "inline");
         const editorPaddingX = this.settingsManager.getEditorPaddingX();
         const autocompleteMaxVisible = this.settingsManager.getAutocompleteMaxVisible();
         this.defaultEditor.setPaddingX(editorPaddingX);
@@ -1919,6 +1922,11 @@ export class InteractiveMode {
                 await this.showModelsSelector();
                 return;
             }
+            if (text === "/context") {
+                this.handleContextCommand();
+                this.editor.setText("");
+                return;
+            }
             if (text === "/model" || text.startsWith("/model ")) {
                 const searchTerm = text.startsWith("/model ") ? text.slice(7).trim() : undefined;
                 this.editor.setText("");
@@ -2026,7 +2034,7 @@ export class InteractiveMode {
                 this.editor.setText("");
                 return;
             }
-            if (text === "/quit") {
+            if (text === "/quit" || text === "/exit") {
                 this.editor.setText("");
                 await this.shutdown();
                 return;
@@ -2614,7 +2622,7 @@ export class InteractiveMode {
             this.stop();
             process.exit(0);
         }
-        // Interactive quit (Ctrl+D, Ctrl+C, /quit, extension shutdown()). Stop the
+        // Interactive quit (Ctrl+D, Ctrl+C, /quit, /exit, extension shutdown()). Stop the
         // TUI before emitting shutdown events so extension UI cleanup cannot repaint
         // the final frame while the process is exiting.
         // Drain any in-flight Kitty key release events before stopping.
@@ -3265,6 +3273,23 @@ export class InteractiveMode {
             });
             return { component: selector, focus: selector.getSettingsList() };
         });
+    }
+    handleContextCommand() {
+        const contextUsage = this.session.getContextUsage();
+        if (!contextUsage) {
+            this.showError("Context usage is not available yet (make a request first).");
+            return;
+        }
+        const percent = contextUsage.percent !== null ? `${contextUsage.percent.toFixed(1)}%` : "Unknown";
+        const tokens = contextUsage.tokens !== null ? contextUsage.tokens.toLocaleString() : "Unknown";
+        const contextWindow = contextUsage.contextWindow > 0 ? contextUsage.contextWindow.toLocaleString() : "Unknown";
+        this.chatContainer.addChild(new Spacer(1));
+        this.chatContainer.addChild(new Text(theme.bold(theme.fg("accent", "Context Window Usage")), 1, 0));
+        this.chatContainer.addChild(new Text(theme.fg("muted", `Current Tokens: `) + tokens, 1, 0));
+        this.chatContainer.addChild(new Text(theme.fg("muted", `Max Window: `) + contextWindow, 1, 0));
+        this.chatContainer.addChild(new Text(theme.fg("muted", `Percentage: `) + percent, 1, 0));
+        this.chatContainer.addChild(new Spacer(1));
+        this.ui.requestRender();
     }
     async handleModelCommand(searchTerm) {
         if (!searchTerm) {

@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "../../../coding-agent/src/core/extensions/types.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { FailureClass } from "./classify-failure.ts";
 import { classifyFailure } from "./classify-failure.ts";
 import {

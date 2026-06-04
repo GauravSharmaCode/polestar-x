@@ -1,8 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { glob } from "glob";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../../coding-agent/src/core/extensions/types.ts";
 
 const globParams = Type.Object({
 	pattern: Type.String({ description: "The glob pattern to match files against, e.g. '**/*.ts'" }),
