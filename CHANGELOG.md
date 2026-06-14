@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-14
+
+Standalone, sovereign release. PoleStar-X is now a single published package built
+on the pinned pi SDK, with its own identity rather than a full fork of pi-mono.
+
+### Changed
+
+- **Standalone repo**: flattened the pi-mono monorepo to a single package at the
+  repo root. Removed the forked `packages/agent`, `packages/ai`,
+  `packages/coding-agent`, `packages/tui`, and `packages/harness`; the published
+  package consumes the npm-released `@earendil-works/pi-*` instead.
+- **Pinned pi**: all `@earendil-works/pi-*` exact-pinned to `0.79.3` (no `^`/`~`).
+- **Sovereign identity**: the CLI now runs as PoleStar-X, not pi — its own
+  version, `~/.polestar/agent` user config directory, and startup changelog. A
+  one-time migration copies an existing `~/.pi/agent` to `~/.polestar/agent` so
+  upgrading users keep their auth, sessions, and settings.
+
+### Added
+
+- `--init-config` flag to scaffold the project-local `.polestar/` directory
+  without booting the interactive UI (headless/scriptable).
+- Install smoke test (`scripts/smoke.sh`): packs the tarball, installs it
+  globally, and verifies boot, dependency resolution, a live provider round-trip,
+  sovereign version, and config scaffolding.
+- Pi upgrade probe (`scripts/check-pi-upgrade.mjs`): tests a pi version bump in
+  an isolated worktree without committing.
+- Release pipeline (`scripts/release.mjs`): enforced clean → build → test →
+  import-check → smoke → publish → post-publish registry smoke.
+
+### Fixed
+
+- Removed the dead `POLESTAR_APP_PACKAGE_DIR` environment variable (no-op against
+  released pi). Version string in the header now comes from `package.json` instead
+  of a hardcoded literal.
+
 ## [0.1.1] - 2026-06-14
 
 ### Fixed
