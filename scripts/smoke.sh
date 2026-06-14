@@ -104,17 +104,30 @@ INSTALLED_GLOBAL=1
 
 # make sure the freshly-installed bin is on PATH
 NPM_GLOBAL_PREFIX="$(npm prefix -g)"
-export PATH="$NPM_GLOBAL_PREFIX:$NPM_GLOBAL_PREFIX/bin:$PATH"
-command -v "$BIN_NAME" >/dev/null 2>&1 || die "$BIN_NAME not on PATH after global install"
-ok "installed; $BIN_NAME resolves to $(command -v "$BIN_NAME")"
+# On Windows/Git Bash, npm prefix -g returns a Windows path (e.g. C:\Users\...).
+# Convert it to a POSIX path so Bash can put it on PATH correctly.
+NPM_GLOBAL_UNIX="$(cygpath -u "$NPM_GLOBAL_PREFIX" 2>/dev/null || printf '%s\n' "$NPM_GLOBAL_PREFIX")"
+export PATH="$NPM_GLOBAL_UNIX:$NPM_GLOBAL_UNIX/bin:$PATH"
+
+# On Windows, npm creates a .cmd shim alongside the shell script.
+# The shell script shim uses POSIX paths that Node can't resolve on Windows,
+# so we must invoke the .cmd wrapper instead.
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || -n "$WINDIR" ]]; then
+  BIN_CMD="${BIN_NAME}.cmd"
+else
+  BIN_CMD="${BIN_NAME}"
+fi
+
+command -v "$BIN_CMD" >/dev/null 2>&1 || die "$BIN_CMD not on PATH after global install"
+ok "installed; $BIN_CMD resolves to $(command -v "$BIN_CMD")"
 
 # ----------------------------------------------------------------------------
 # Gate 1 — process boots and every runtime dependency resolves
 # ----------------------------------------------------------------------------
 bold "Gate 1: boot + dependency resolution"
-"$BIN_NAME" --help        >/dev/null || die "--help failed (boot or missing dep)"
-"$BIN_NAME" --version     || die "--version failed"
-"$BIN_NAME" --list-models >/dev/null || die "--list-models failed (provider catalog)"
+"$BIN_CMD" --help        >/dev/null || die "--help failed (boot or missing dep)"
+"$BIN_CMD" --version     || die "--version failed"
+"$BIN_CMD" --list-models >/dev/null || die "--list-models failed (provider catalog)"
 ok "boots, --version, --list-models all clean"
 
 # ----------------------------------------------------------------------------
@@ -124,7 +137,7 @@ bold "Gate 2: live provider round-trip"
 MODELS="${SMOKE_MODELS:-github-copilot/gpt-4o-mini opencode/grok-code}"
 provider_successes=0
 for model in $MODELS; do
-  if "$BIN_NAME" --model "$model" -p "Say exactly: ok" 2>/dev/null | grep -qi 'ok'; then
+  if "$BIN_CMD" --model "$model" -p "Say exactly: ok" 2>/dev/null | grep -qi 'ok'; then
     ok "$model answered"
     provider_successes=$((provider_successes + 1))
   else
@@ -150,7 +163,7 @@ elif ! command -v tmux >/dev/null 2>&1; then
   warn "  run this gate on a tmux-capable host, or add a PowerShell-pty mirror"
 else
   imodel="${MODELS%% *}"   # first model
-  tmux new-session -d -s polestar-smoke -x 120 -y 40 "$BIN_NAME --model $imodel"
+  tmux new-session -d -s polestar-smoke -x 120 -y 40 "$BIN_CMD --model $imodel"
   sleep 3
   tmux send-keys -t polestar-smoke "Say exactly: ok" Enter
   sleep 15
@@ -173,36 +186,18 @@ fi
 #   2. -p "init-config"    (plain positional — some CLIs route both ways)
 # If neither produces the scaffold, the gate fails with a precise diagnostic.
 # ----------------------------------------------------------------------------
-bold "Gate 4: /init-config scaffolding"
-imodel="${MODELS%% *}"
+bold "Gate 4: --init-config scaffolding"
 
-PROJ_DIR1="$SMOKE_DIR/proj-slash"
+PROJ_DIR1="$SMOKE_DIR/proj-init"
 mkdir -p "$PROJ_DIR1"
-( cd "$PROJ_DIR1" && "$BIN_NAME" --model "$imodel" -p "/init-config" >/dev/null 2>&1 || true )
+( cd "$PROJ_DIR1" && "$BIN_CMD" --init-config >/dev/null 2>&1 )
 
 if [ -f "$PROJ_DIR1/.polestar/settings.json" ] && [ -f "$PROJ_DIR1/.polestar/mcp.json" ]; then
-  ok ".polestar/{settings.json,mcp.json} scaffolded via -p '/init-config'"
+  ok ".polestar/{settings.json,mcp.json} scaffolded via --init-config"
 else
-  warn "-p '/init-config' did not scaffold (pi may not dispatch slash-commands headlessly)"
-  warn "trying -p 'init-config' (no slash)…"
-  PROJ_DIR2="$SMOKE_DIR/proj-plain"
-  mkdir -p "$PROJ_DIR2"
-  ( cd "$PROJ_DIR2" && "$BIN_NAME" --model "$imodel" -p "init-config" >/dev/null 2>&1 || true )
-
-  if [ -f "$PROJ_DIR2/.polestar/settings.json" ] && [ -f "$PROJ_DIR2/.polestar/mcp.json" ]; then
-    ok ".polestar/{settings.json,mcp.json} scaffolded via -p 'init-config' (no slash)"
-    warn "NOTE: add init-config as a top-level flag/positional to polestar-core.ts so the slash form also works headlessly"
-  else
-    echo "=== proj-slash .polestar contents (if any) ===" >&2
+    echo "=== proj-init .polestar contents (if any) ===" >&2
     ls -la "$PROJ_DIR1/.polestar" 2>/dev/null || true >&2
-    echo "=== proj-plain .polestar contents (if any) ===" >&2
-    ls -la "$PROJ_DIR2/.polestar" 2>/dev/null || true >&2
-    die "/init-config did not scaffold .polestar/ in either form.
-  Options to fix:
-    a) Expose init-config as --init-config CLI flag in cli.ts (runs before pi's main loop)
-    b) Register init-config as a piConfig.onStart hook
-    c) Accept that Gate 4 must run interactively (remove from smoke.sh, add to manual checklist)"
-  fi
+    die "--init-config did not scaffold .polestar/ — check cli.ts intercept"
 fi
 
 bold "SMOKE PASS"
