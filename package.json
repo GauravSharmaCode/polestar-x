@@ -47,7 +47,10 @@
 		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js",
 		"test": "vitest --run",
 		"check": "npm run build && node scripts/check-package-import-deps.mjs .",
-		"prepublishOnly": "npm run clean && npm run build && node scripts/check-package-import-deps.mjs ."
+		"prepublishOnly": "npm run clean && npm run build && node scripts/check-package-import-deps.mjs .",
+		"release": "node scripts/release.mjs",
+		"release:dry": "node scripts/release.mjs --dry-run",
+		"upgrade:pi": "node scripts/check-pi-upgrade.mjs"
 	},
 	"dependencies": {
 		"@earendil-works/pi-agent-core": "0.79.3",
