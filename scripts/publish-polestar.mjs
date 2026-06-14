@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Publish PoleStar-X (and pi-coding-agent when a new patch is needed).
+ * Publish PoleStar-X to npm.
  *
- * Prerequisites: npm login (scopes @gauravsharmacode, @earendil-works)
+ * Prerequisites: npm login (scope @gauravsharmacode)
  *
  * Usage: node scripts/publish-polestar.mjs [--dry-run]
  */
@@ -14,11 +14,6 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dryRun = process.argv.includes("--dry-run");
-
-const packages = [
-	{ directory: join(root, "packages/coding-agent"), name: "@earendil-works/pi-coding-agent" },
-	{ directory: join(root, "packages/polestar"), name: "@gauravsharmacode/polestar-x" },
-];
 
 function commandForPlatform(command) {
 	if (process.platform !== "win32") {
@@ -33,7 +28,7 @@ function commandForPlatform(command) {
 function run(command, args, options = {}) {
 	console.log(`$ ${[command, ...args].join(" ")}`);
 	const result = spawnSync(commandForPlatform(command), args, {
-		cwd: options.cwd,
+		cwd: options.cwd ?? root,
 		encoding: "utf8",
 		shell: process.platform === "win32",
 		stdio: options.capture ? ["inherit", "pipe", "pipe"] : "inherit",
@@ -47,24 +42,24 @@ function run(command, args, options = {}) {
 	return result;
 }
 
-function readPackageJson(directory) {
-	return JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+function readPackageJson() {
+	return JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 }
 
-function assertBuildOutputExists(directory) {
-	if (!existsSync(join(directory, "dist"))) {
-		throw new Error(`${directory}/dist does not exist. Run npm run build in that package first.`);
+function assertBuildOutputExists() {
+	if (!existsSync(join(root, "dist"))) {
+		throw new Error("dist/ does not exist. Run npm run build first.");
 	}
 }
 
-function validatePack(directory) {
-	const result = run("npm", ["pack", "--dry-run", "--ignore-scripts", "--json"], { capture: true, cwd: directory });
+function validatePack() {
+	const result = run("npm", ["pack", "--dry-run", "--ignore-scripts", "--json"], { capture: true });
 	const packed = JSON.parse(result.stdout)[0];
 	console.log(`  ${packed.filename}: ${packed.files.length} files, ${packed.size} bytes packed, ${packed.unpackedSize} bytes unpacked`);
 }
 
-function validateImportDependencies(directory) {
-	run("node", [join(root, "scripts/check-package-import-deps.mjs"), directory]);
+function validateImportDependencies() {
+	run("node", [join(root, "scripts/check-package-import-deps.mjs"), root]);
 }
 
 function isPublished(name, version) {
@@ -86,37 +81,38 @@ function isPublished(name, version) {
 	throw new Error(output ? `Failed to query ${name}@${version}\n${output}` : `Failed to query ${name}@${version}`);
 }
 
-console.log(`Publishing PoleStar-X release${dryRun ? " (dry run)" : ""}\n`);
+const packageJson = readPackageJson();
+const name = packageJson.name;
+const version = packageJson.version;
 
-for (const pkg of packages) {
-	const packageJson = readPackageJson(pkg.directory);
-	const version = packageJson.version;
+console.log(`Publishing ${name}@${version}${dryRun ? " (dry run)" : ""}\n`);
 
-	console.log(`=== ${pkg.name}@${version} ===\n`);
-	assertBuildOutputExists(pkg.directory);
+assertBuildOutputExists();
 
-	const published = isPublished(pkg.name, version);
+const published = isPublished(name, version);
 
-	if (dryRun) {
-		if (published) {
-			console.log(`${pkg.name}@${version} is already published; validating package contents only.`);
-		} else {
-			console.log(`${pkg.name}@${version} is not published; validating package contents before publish.`);
-		}
-		validateImportDependencies(pkg.directory);
-		validatePack(pkg.directory);
-		console.log();
-		continue;
-	}
-
+if (dryRun) {
 	if (published) {
-		console.log(`Skipping ${pkg.name}@${version}: already published\n`);
-		continue;
+		console.log(`${name}@${version} is already published; validating package contents only.`);
+	} else {
+		console.log(`${name}@${version} is not published; validating package contents before publish.`);
 	}
-
-	validateImportDependencies(pkg.directory);
-	run("npm", ["publish", "--access", "public", "--ignore-scripts"], { cwd: pkg.directory });
-	console.log();
+	validateImportDependencies();
+	validatePack();
+	console.log("\nDry run complete.");
+	process.exit(0);
 }
 
-console.log("Done.");
+if (published) {
+	console.log(`Skipping: ${name}@${version} is already published.`);
+	process.exit(0);
+}
+
+// Build, validate, publish
+run("npm", ["run", "clean"]);
+run("npm", ["run", "build"]);
+validateImportDependencies();
+run("npm", ["publish", "--access", "public"]);
+
+console.log(`\nPublished ${name}@${version} successfully.`);
+console.log(`Verify: npm view ${name}@${version} dependencies`);

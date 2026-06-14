@@ -2,33 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint-and-check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Check
-        run: npm run check
-
   build-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -41,17 +23,14 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -s $(which fdfind) /usr/local/bin/fd
-
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
       - name: Build
         run: npm run build
+
+      - name: Check import deps
+        run: node scripts/check-package-import-deps.mjs .
 
       - name: Test
         run: npm test
