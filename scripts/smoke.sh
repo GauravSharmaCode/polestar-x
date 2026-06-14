@@ -47,6 +47,19 @@ winpath() {
   fi
 }
 
+# --- shell guard: this script targets Git Bash on Windows -------------------
+# `bash` on a Windows PATH frequently resolves to the WSL launcher
+# (C:\Windows\System32\bash.exe). Under WSL the Windows paths this script builds
+# (cygpath / .cmd shims / `node -p require('C:/...')`) break, and the failure
+# used to surface as a confusing "no package.json at .../packages/polestar".
+# Fail fast with a precise instruction instead. The release pipeline already
+# selects Git Bash automatically (scripts/release.mjs → bashExe()).
+if grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+  die "running under WSL — this script targets Git Bash. Re-run it under Git Bash, e.g.
+  '/c/Program Files/Git/bin/bash.exe' scripts/smoke.sh
+  (the release pipeline picks Git Bash automatically)."
+fi
+
 # --- resolve repo + package dir ---------------------------------------------
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
@@ -54,12 +67,16 @@ detect_pkg_dir() {
   if [ "${1:-}" != "" ]; then
     printf '%s\n' "$1"; return
   fi
-  local root_name
-  root_name="$(node -p "require('$(winpath "$REPO_ROOT/package.json")').name" 2>/dev/null || echo "")"
-  if [ "$root_name" = "@gauravsharmacode/polestar-x" ]; then
-    printf '%s\n' "$REPO_ROOT"            # post-restructure: flat repo
+  # The repo is a single flat package at the root (the packages/polestar
+  # monorepo layout was removed in 0.2.0). Read the name straight from
+  # package.json with grep — no `node -p require(...)`, which fails silently
+  # under a non-Windows node and used to mask the real error.
+  if grep -q '"@gauravsharmacode/polestar-x"' "$REPO_ROOT/package.json" 2>/dev/null; then
+    printf '%s\n' "$REPO_ROOT"            # flat repo (current layout)
+  elif [ -f "$REPO_ROOT/packages/polestar/package.json" ]; then
+    printf '%s\n' "$REPO_ROOT/packages/polestar"   # legacy monorepo, if ever resurrected
   else
-    printf '%s\n' "$REPO_ROOT/packages/polestar"   # pre-restructure: monorepo
+    printf '%s\n' "$REPO_ROOT"            # default: flat repo
   fi
 }
 

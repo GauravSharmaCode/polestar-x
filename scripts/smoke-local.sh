@@ -30,13 +30,15 @@ winpath() {
 }
 
 # --- detect package dir (mirrors logic in smoke.sh) -------------------------
+# Node-free, flat-default detection — see smoke.sh detect_pkg_dir for why.
 PKG_DIR="${1:-}"
 if [ -z "$PKG_DIR" ]; then
-  root_name="$(node -p "require('$(winpath "$REPO_ROOT/package.json")').name" 2>/dev/null || echo "")"
-  if [ "$root_name" = "@gauravsharmacode/polestar-x" ]; then
+  if grep -q '"@gauravsharmacode/polestar-x"' "$REPO_ROOT/package.json" 2>/dev/null; then
     PKG_DIR="$REPO_ROOT"
-  else
+  elif [ -f "$REPO_ROOT/packages/polestar/package.json" ]; then
     PKG_DIR="$REPO_ROOT/packages/polestar"
+  else
+    PKG_DIR="$REPO_ROOT"
   fi
 fi
 

@@ -48,12 +48,31 @@ function npm() {
 	return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
-function run(command, args, { cwd = ROOT, env = {} } = {}) {
+// Resolve the bash that smoke.sh is written for. On Windows, a bare `bash` on
+// PATH frequently resolves to the WSL launcher (C:\Windows\System32\bash.exe);
+// under WSL the Windows paths smoke.sh builds (cygpath, .cmd shims, and
+// `node -p require('C:/...')`) break, and detection silently falls back to the
+// dead packages/polestar monorepo path — the "no package.json at .../packages/
+// polestar" SMOKE FAIL. Git Bash is the shell smoke.sh targets, so prefer it.
+function bashExe() {
+	if (process.platform !== "win32") return "bash";
+	const candidates = [
+		join(process.env.ProgramFiles || "C:\\Program Files", "Git", "bin", "bash.exe"),
+		join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Git", "bin", "bash.exe"),
+		join(process.env.LOCALAPPDATA || "", "Programs", "Git", "bin", "bash.exe"),
+	];
+	for (const candidate of candidates) {
+		if (candidate && existsSync(candidate)) return candidate;
+	}
+	return "bash"; // last resort — smoke.sh fails fast with a clear message if this is WSL
+}
+
+function run(command, args, { cwd = ROOT, env = {}, shell = process.platform === "win32" } = {}) {
 	console.log(`  $ ${command} ${args.join(" ")}`);
 	const result = spawnSync(command, args, {
 		cwd,
 		stdio: "inherit",
-		shell: process.platform === "win32",
+		shell,
 		env: { ...process.env, ...env },
 	});
 	if (result.status !== 0) {
@@ -130,7 +149,9 @@ ok("all runtime imports declared");
 
 // 6. Pre-publish smoke (pack → global install → boot + deps + provider + /init-config)
 step(6, "smoke.sh (pre-publish local install)");
-run("bash", ["scripts/smoke.sh"], { cwd: ROOT });
+// shell:false so a Git Bash path containing spaces ("C:\Program Files\...")
+// is passed straight to CreateProcess instead of being re-split by cmd.exe.
+run(bashExe(), ["scripts/smoke.sh"], { cwd: ROOT, shell: false });
 ok("smoke passed");
 
 if (dryRun) {
