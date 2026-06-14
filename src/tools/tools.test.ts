@@ -111,6 +111,44 @@ describe("PoleStar Tools", () => {
 			expect(updatedContent).toContain("updated");
 			expect(updatedContent).not.toContain("original");
 		});
+
+		it("should reject patch files with path escaping the workspace", async () => {
+			const patchText = `
+*** Begin Patch
+*** Update File: ../outside.ts
+@@ console.log('original');
+-console.log('original');
++console.log('updated');
+*** End of File
+*** End Patch
+`.trim();
+
+			await expect(
+				applyPatchTool.execute("call-id", { patchText }, undefined, undefined, ctx)
+			).rejects.toThrow("Path security violation");
+		});
+
+		it("should reject patch files with move_path escaping the workspace", async () => {
+			const filePath = "src/code.ts";
+			const absolutePath = path.join(testDir, filePath);
+			mkdirSync(path.dirname(absolutePath), { recursive: true });
+			writeFileSync(absolutePath, "console.log('original');\n", "utf-8");
+
+			const patchText = `
+*** Begin Patch
+*** Update File: src/code.ts
+*** Move to: ../outside.ts
+@@ console.log('original');
+-console.log('original');
++console.log('updated');
+*** End of File
+*** End Patch
+`.trim();
+
+			await expect(
+				applyPatchTool.execute("call-id", { patchText }, undefined, undefined, ctx)
+			).rejects.toThrow("Path security violation");
+		});
 	});
 
 	describe("webFetchTool", () => {

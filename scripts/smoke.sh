@@ -36,6 +36,17 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m✗ SMOKE FAIL:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# --- to-windows-path helper (npm on Git Bash / WSL wants a native path) -----
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  elif command -v wslpath >/dev/null 2>&1; then
+    wslpath -w "$1" | tr '\\' '/'
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 # --- resolve repo + package dir ---------------------------------------------
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
@@ -44,7 +55,7 @@ detect_pkg_dir() {
     printf '%s\n' "$1"; return
   fi
   local root_name
-  root_name="$(node -p "require('$REPO_ROOT/package.json').name" 2>/dev/null || echo "")"
+  root_name="$(node -p "require('$(winpath "$REPO_ROOT/package.json")').name" 2>/dev/null || echo "")"
   if [ "$root_name" = "@gauravsharmacode/polestar-x" ]; then
     printf '%s\n' "$REPO_ROOT"            # post-restructure: flat repo
   else
@@ -55,18 +66,13 @@ detect_pkg_dir() {
 PKG_DIR="$(detect_pkg_dir "${1:-}")"
 [ -f "$PKG_DIR/package.json" ] || die "no package.json at $PKG_DIR"
 
-PKG_NAME="$(node -p "require('$PKG_DIR/package.json').name")"
-PKG_VERSION="$(node -p "require('$PKG_DIR/package.json').version")"
-BIN_NAME="$(node -p "Object.keys(require('$PKG_DIR/package.json').bin || {})[0] || ''")"
+PKG_NAME="$(node -p "require('$(winpath "$PKG_DIR/package.json")').name")"
+PKG_VERSION="$(node -p "require('$(winpath "$PKG_DIR/package.json")').version")"
+BIN_NAME="$(node -p "Object.keys(require('$(winpath "$PKG_DIR/package.json")').bin || {})[0] || ''")"
 [ -n "$BIN_NAME" ] || die "package $PKG_NAME declares no bin"
 
 bold "PoleStar-X smoke: $PKG_NAME@$PKG_VERSION  (bin: $BIN_NAME)"
 echo "  package dir: $PKG_DIR"
-
-# --- to-windows-path helper (npm on Git Bash wants a native path) -----------
-winpath() {
-  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s\n' "$1"; fi
-}
 
 # --- pre-flight: dist must already be built ---------------------------------
 if [ ! -f "$PKG_DIR/dist/cli.js" ]; then

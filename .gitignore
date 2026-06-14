@@ -31,3 +31,8 @@ tui-debug.log
 .pi_config/
 .antigravitycli/
 docs/superpowers/
+
+# Vendored assets mirrored in source-checkout
+src/modes/interactive/theme/
+src/modes/interactive/assets/
+src/core/export-html/

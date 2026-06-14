@@ -41,6 +41,17 @@ on the pinned pi SDK, with its own identity rather than a full fork of pi-mono.
 - Removed the dead `POLESTAR_APP_PACKAGE_DIR` environment variable (no-op against
   released pi). Version string in the header now comes from `package.json` instead
   of a hardcoded literal.
+- **Upstream update notifier suppressed**: pi's startup version check queries its
+  own server and compares against our version, so it fired an "Update Available"
+  box on every launch — advertising pi's version, telling users to `polestar
+  update`, and linking pi's changelog. Bootstrap now sets `PI_SKIP_VERSION_CHECK`
+  (before pi evaluates, so it survives pi upgrades) to disable it.
+- **apply_patch path traversal**: patch hunk paths are now resolved against the
+  workspace and rejected if they escape it, instead of being written anywhere
+  `path.resolve` lands.
+- **plan_exit mode toggle**: replaced the fragile `(ctx as any)._pi` lookup with a
+  `createPlanExitTool(pi)` closure that captures the extension API directly, so the
+  Think→Write transition no longer throws "Extension API reference not found".
 
 ## [0.1.1] - 2026-06-14
 

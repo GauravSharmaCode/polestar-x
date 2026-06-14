@@ -18,10 +18,21 @@ bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m✗ FAIL:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# --- to-windows-path helper (npm on Git Bash / WSL wants a native path) -----
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  elif command -v wslpath >/dev/null 2>&1; then
+    wslpath -w "$1" | tr '\\' '/'
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 # --- detect package dir (mirrors logic in smoke.sh) -------------------------
 PKG_DIR="${1:-}"
 if [ -z "$PKG_DIR" ]; then
-  root_name="$(node -p "require('$REPO_ROOT/package.json').name" 2>/dev/null || echo "")"
+  root_name="$(node -p "require('$(winpath "$REPO_ROOT/package.json")').name" 2>/dev/null || echo "")"
   if [ "$root_name" = "@gauravsharmacode/polestar-x" ]; then
     PKG_DIR="$REPO_ROOT"
   else

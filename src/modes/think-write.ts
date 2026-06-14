@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 export type ExecutionMode = "think" | "spec" | "plan" | "write";
@@ -33,7 +33,7 @@ export function getExecutionMode(): ExecutionMode {
 	return currentMode;
 }
 
-export function setExecutionMode(pi: ExtensionAPI, mode: ExecutionMode, ctx: any) {
+export function setExecutionMode(pi: ExtensionAPI, mode: ExecutionMode, ctx: ExtensionContext) {
 	currentMode = mode;
 
 	if (originalActiveTools.length === 0) {
@@ -122,25 +122,23 @@ const planExitParams = Type.Object({
 	explanation: Type.String({ description: "Explanation of the plan to be executed in Write mode" }),
 });
 
-export const planExitTool: ToolDefinition<typeof planExitParams> = {
-	name: "plan_exit",
-	label: "Exit Plan",
-	description:
-		"Signal that the thinking/planning phase is complete and ask to transition to Write mode to begin implementation.",
-	parameters: planExitParams,
-	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-		let consented = true;
-		if (ctx.hasUI) {
-			consented = await ctx.ui.confirm(
-				"Transition to Write Mode",
-				`The agent proposed completing the plan:\n"${params.explanation}"\n\nTransition to Write mode to execute implementation?`,
-			);
-		}
+export function createPlanExitTool(pi: ExtensionAPI): ToolDefinition<typeof planExitParams> {
+	return {
+		name: "plan_exit",
+		label: "Exit Plan",
+		description:
+			"Signal that the thinking/planning phase is complete and ask to transition to Write mode to begin implementation.",
+		parameters: planExitParams,
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			let consented = true;
+			if (ctx.hasUI) {
+				consented = await ctx.ui.confirm(
+					"Transition to Write Mode",
+					`The agent proposed completing the plan:\n"${params.explanation}"\n\nTransition to Write mode to execute implementation?`,
+				);
+			}
 
-		if (consented) {
-			// Accessing ExtensionAPI registered in context or from extension load
-			const pi = (ctx as any)._pi;
-			if (pi) {
+			if (consented) {
 				setExecutionMode(pi, "write", ctx);
 				return {
 					content: [
@@ -148,15 +146,14 @@ export const planExitTool: ToolDefinition<typeof planExitParams> = {
 					],
 					details: { mode: "write" },
 				};
+			} else {
+				return {
+					content: [
+						{ type: "text" as const, text: "Transition rejected by user. Remaining in Think (read-only) mode." },
+					],
+					details: { mode: "think" },
+				};
 			}
-			throw new Error("Extension API reference not found in context. Unable to toggle mode.");
-		} else {
-			return {
-				content: [
-					{ type: "text" as const, text: "Transition rejected by user. Remaining in Think (read-only) mode." },
-				],
-				details: { mode: "think" },
-			};
-		}
-	},
-};
+		},
+	};
+}

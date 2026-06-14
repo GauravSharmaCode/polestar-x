@@ -9,7 +9,7 @@ import { formatHistoricalMemoryBlock } from "../memory/format.ts";
 import {
 	getExecutionMode,
 	POLESTAR_DEFAULT_TOOLS,
-	planExitTool,
+	createPlanExitTool,
 	restrictedWriteTool,
 	setExecutionMode,
 } from "../modes/think-write.ts";
@@ -128,7 +128,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	pi.registerTool(webSearchTool);
 	pi.registerTool(questionTool);
 	pi.registerTool(manageRuleTool);
-	pi.registerTool(planExitTool);
+	pi.registerTool(createPlanExitTool(pi));
 	pi.registerTool(restrictedWriteTool);
 	pi.registerTool(taskTool);
 
@@ -230,9 +230,6 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		// Bind pi reference for use in tools
-		(ctx as any)._pi = pi;
-
 		const state = getRoutingState(ctx);
 		state.initialPrompt = event.prompt;
 		state.turnCount = 0;

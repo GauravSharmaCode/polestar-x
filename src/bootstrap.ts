@@ -34,10 +34,21 @@ if (process.argv.includes("--init-config")) {
 //
 // In a source checkout pi's src-vs-dist asset heuristic would look under src/,
 // where nothing is vendored, so dev runs keep pi's own identity and assets.
-if (!existsSync(join(packageRoot, "src"))) {
-	process.env.PI_PACKAGE_DIR = packageRoot;
-	migrateLegacyAgentDir();
+process.env.PI_PACKAGE_DIR = packageRoot;
+
+// Suppress pi's upstream version notifier. pi's startup check hits its own
+// server (https://pi.dev/api/latest-version) and compares the result against
+// our version. Since polestar's version (e.g. 0.2.0) is always behind pi's
+// latest (e.g. 0.73.x), the "Update Available" box — telling users to run
+// `polestar update` to get pi's version and linking pi's changelog — fires on
+// every startup. None of that is meaningful for a sovereign fork. Set this
+// before pi evaluates so it survives pi upgrades. Honour an explicit user
+// override (any prior value disables the check just the same).
+if (process.env.PI_SKIP_VERSION_CHECK === undefined) {
+	process.env.PI_SKIP_VERSION_CHECK = "1";
 }
+
+migrateLegacyAgentDir();
 
 /**
  * One-time migration so upgrading 0.1.x users keep their auth, sessions,

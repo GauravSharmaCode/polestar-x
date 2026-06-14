@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getExecutionMode, POLESTAR_DEFAULT_TOOLS, setExecutionMode } from "./think-write.ts";
+import { getExecutionMode, POLESTAR_DEFAULT_TOOLS, setExecutionMode, createPlanExitTool } from "./think-write.ts";
 
 describe("Think and Write Modes Controller", () => {
 	let activeTools: string[] = [];
@@ -91,5 +91,30 @@ describe("Think and Write Modes Controller", () => {
 		expect(activeTools).toContain("plan_exit");
 
 		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "📋 plan");
+	});
+
+	describe("createPlanExitTool", () => {
+		it("should switch mode to write on consent", async () => {
+			const pi = mockPi;
+			const tool = createPlanExitTool(pi);
+			mockCtx.hasUI = true;
+			mockCtx.ui.confirm = vi.fn().mockResolvedValue(true);
+
+			const result = await tool.execute("id", { explanation: "test" }, undefined, undefined, mockCtx);
+			expect(result.content[0].text).toContain("Successfully transitioned to Write mode");
+			expect(getExecutionMode()).toBe("write");
+		});
+
+		it("should remain in think mode on rejection", async () => {
+			const pi = mockPi;
+			const tool = createPlanExitTool(pi);
+			mockCtx.hasUI = true;
+			mockCtx.ui.confirm = vi.fn().mockResolvedValue(false);
+			setExecutionMode(pi, "think", mockCtx);
+
+			const result = await tool.execute("id", { explanation: "test" }, undefined, undefined, mockCtx);
+			expect(result.content[0].text).toContain("Transition rejected by user");
+			expect(getExecutionMode()).toBe("think");
+		});
 	});
 });

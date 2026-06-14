@@ -353,6 +353,17 @@ const applyPatchParams = Type.Object({
 	}),
 });
 
+function resolveWorkspacePath(cwd: string, requestedPath: string): string {
+	const resolvedCwd = path.resolve(cwd);
+	const resolvedPath = path.resolve(resolvedCwd, requestedPath);
+	const relative = path.relative(resolvedCwd, resolvedPath);
+
+	if (relative.startsWith("..") || path.isAbsolute(relative)) {
+		throw new Error(`Path security violation: target path '${requestedPath}' escapes workspace directory '${cwd}'`);
+	}
+	return resolvedPath;
+}
+
 export const applyPatchTool: ToolDefinition<typeof applyPatchParams> = {
 	name: "apply_patch",
 	label: "Apply Patch",
@@ -368,7 +379,7 @@ export const applyPatchTool: ToolDefinition<typeof applyPatchParams> = {
 		const results: string[] = [];
 
 		for (const hunk of hunks) {
-			const absolutePath = path.resolve(ctx.cwd, hunk.path);
+			const absolutePath = resolveWorkspacePath(ctx.cwd, hunk.path);
 
 			await withFileMutationQueue(absolutePath, async () => {
 				if (hunk.type === "add") {
@@ -398,7 +409,7 @@ export const applyPatchTool: ToolDefinition<typeof applyPatchParams> = {
 					writeFileSync(absolutePath, textToWrite, "utf-8");
 
 					if (hunk.move_path) {
-						const moveAbsolutePath = path.resolve(ctx.cwd, hunk.move_path);
+						const moveAbsolutePath = resolveWorkspacePath(ctx.cwd, hunk.move_path);
 						mkdirSync(path.dirname(moveAbsolutePath), { recursive: true });
 						writeFileSync(moveAbsolutePath, textToWrite, "utf-8");
 						unlinkSync(absolutePath);

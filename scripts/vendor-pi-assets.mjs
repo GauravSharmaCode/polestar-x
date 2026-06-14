@@ -33,7 +33,6 @@ const assetDirs = [
 
 for (const [rel, critical] of assetDirs) {
 	const from = join(piDist, rel);
-	const to = join(outDist, rel);
 	if (!existsSync(from)) {
 		if (critical) {
 			console.error(`vendor-pi-assets: MISSING boot-critical asset dir ${from}`);
@@ -42,7 +41,16 @@ for (const [rel, critical] of assetDirs) {
 		console.warn(`vendor-pi-assets: skipping missing ${rel}`);
 		continue;
 	}
-	mkdirSync(dirname(to), { recursive: true });
-	cpSync(from, to, { recursive: true });
-	console.log(`vendor-pi-assets: vendored ${rel}`);
+
+	// Copy to dist/
+	const toDist = join(root, "dist", rel);
+	mkdirSync(dirname(toDist), { recursive: true });
+	cpSync(from, toDist, { recursive: true });
+	console.log(`vendor-pi-assets: vendored to dist/${rel}`);
+
+	// Mirror to src/ for source-checkout runs (avoids identity mismatch in dev)
+	const toSrc = join(root, "src", rel);
+	mkdirSync(dirname(toSrc), { recursive: true });
+	cpSync(from, toSrc, { recursive: true });
+	console.log(`vendor-pi-assets: vendored to src/${rel}`);
 }
