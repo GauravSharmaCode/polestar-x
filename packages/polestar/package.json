@@ -1,6 +1,6 @@
 {
 	"name": "@gauravsharmacode/polestar-x",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "PoleStar-X sovereign coding agent CLI - A fork of pi with enhanced model routing, self-healing retry, and cross-session memory",
 	"type": "module",
 	"license": "MIT",
@@ -46,14 +46,18 @@
 		"clean": "shx rm -rf dist",
 		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js",
 		"test": "vitest --run",
-		"prepublishOnly": "npm run clean && npm run build"
+		"prepublishOnly": "npm run clean && npm run build && node ../../scripts/check-package-import-deps.mjs ."
 	},
 	"dependencies": {
-		"@earendil-works/pi-coding-agent": "^0.78.1",
-		"@earendil-works/pi-tui": "^0.78.1",
+		"@earendil-works/pi-agent-core": "0.78.1",
+		"@earendil-works/pi-ai": "0.78.1",
+		"@earendil-works/pi-coding-agent": "0.78.1",
+		"@earendil-works/pi-tui": "0.78.1",
 		"@gauravsharmacode/pi-memory": "1.0.0",
+		"glob": "13.0.6",
 		"htmlparser2": "9.1.0",
-		"turndown": "7.2.0"
+		"turndown": "7.2.0",
+		"typebox": "1.1.38"
 	},
 	"engines": {
 		"node": ">=22.19.0"

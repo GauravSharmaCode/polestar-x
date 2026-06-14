@@ -23,6 +23,8 @@ packages/*/dist-firefox/
 
 # Package specific
 .npm/
+*.tgz
+.mcp-schema-cache.db
 coverage/
 .nyc_output/
 .pi_config/

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-14
+
+### Fixed
+
+- Declare all direct runtime imports in `package.json` so global installs resolve modules such as `typebox`, `glob`, `@earendil-works/pi-ai`, and `@earendil-works/pi-agent-core`.
+- Add a publish-time check that fails if built `dist/` imports any package not listed in dependencies.
+
 ## [0.1.0] - 2026-06-04
 
 First public npm release (`@gauravsharmacode/polestar-x`).
