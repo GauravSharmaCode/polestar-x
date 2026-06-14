@@ -126,9 +126,18 @@ ok "installed; $BIN_CMD resolves to $(command -v "$BIN_CMD")"
 # ----------------------------------------------------------------------------
 bold "Gate 1: boot + dependency resolution"
 "$BIN_CMD" --help        >/dev/null || die "--help failed (boot or missing dep)"
-"$BIN_CMD" --version     || die "--version failed"
+# Sovereignty assertion: a sovereign install reports polestar's version
+# (PI_PACKAGE_DIR → polestar package.json), not pi's. If this prints pi's
+# version, the redirect/asset vendoring is broken and the changelog/config-dir
+# would be pi's too.
+ver_out="$("$BIN_CMD" --version 2>/dev/null | tr -d '[:space:]')"
+if [ "$ver_out" = "$PKG_VERSION" ]; then
+  ok "--version reports $ver_out (sovereign identity active)"
+else
+  die "--version reported '$ver_out', expected '$PKG_VERSION' — sovereign identity NOT active (PI_PACKAGE_DIR redirect or asset vendoring broken)"
+fi
 "$BIN_CMD" --list-models >/dev/null || die "--list-models failed (provider catalog)"
-ok "boots, --version, --list-models all clean"
+ok "boots, --list-models clean"
 
 # ----------------------------------------------------------------------------
 # Gate 2 — a live provider actually answers (graceful fallback)

@@ -44,7 +44,7 @@
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js && shx mkdir -p dist/modes/interactive/theme dist/modes/interactive/assets && shx cp node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/dark.json node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/light.json node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.json dist/modes/interactive/theme/ && shx cp node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/assets/clankolas.png dist/modes/interactive/assets/",
+		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js && node scripts/vendor-pi-assets.mjs",
 		"test": "vitest --run",
 		"check": "npm run build && node scripts/check-package-import-deps.mjs .",
 		"prepublishOnly": "npm run clean && npm run build && node scripts/check-package-import-deps.mjs .",

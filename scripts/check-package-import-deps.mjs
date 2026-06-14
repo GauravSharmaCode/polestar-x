@@ -75,11 +75,29 @@ const nodeBuiltins = new Set([
 	"zlib",
 ]);
 
+// Vendored pi assets (copied into dist/ by scripts/vendor-pi-assets.mjs). These
+// are pi's own bundled runtime files (theme modules, the HTML export template +
+// its vendored libs); their imports resolve within pi's package, not polestar's
+// dependency manifest, so they must not be scanned here. Keep in sync with
+// scripts/vendor-pi-assets.mjs.
+const vendoredAssetDirs = [
+	join("modes", "interactive", "theme"),
+	join("modes", "interactive", "assets"),
+	join("core", "export-html"),
+];
+
+function isVendoredPath(filePath) {
+	return vendoredAssetDirs.some((vendored) => filePath.includes(`${join(distDirectory, vendored)}`));
+}
+
 function walkJavaScriptFiles(directory) {
 	const files = [];
 	for (const entry of readdirSync(directory, { withFileTypes: true })) {
 		const filePath = join(directory, entry.name);
 		if (entry.isDirectory()) {
+			if (isVendoredPath(filePath)) {
+				continue;
+			}
 			files.push(...walkJavaScriptFiles(filePath));
 			continue;
 		}
