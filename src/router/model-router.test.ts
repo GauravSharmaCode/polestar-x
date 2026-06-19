@@ -93,4 +93,30 @@ describe("modelRouter", () => {
 		});
 		expect(result.model?.provider).toBe("anthropic");
 	});
+
+	it("routes low-complexity code_edit to the fast tier (cheap model)", () => {
+		const result = modelRouter.route({
+			prompt: "hi",
+			turnCount: 0,
+			previousFailures: 0,
+			availableModels: [
+				mockModel("claude-3-5-haiku"),
+				mockModel("claude-3-5-sonnet"),
+				mockModel("claude-3-opus"),
+			],
+		});
+		expect(result.taskClass).toBe("code_edit");
+		expect(result.model?.id).toBe("claude-3-5-haiku");
+	});
+
+	it("routes medium-complexity code_edit to the standard tier", () => {
+		const result = modelRouter.route({
+			prompt: "fix the bug in the auth handler",
+			turnCount: 0,
+			previousFailures: 0,
+			availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-sonnet")],
+		});
+		expect(result.taskClass).toBe("code_edit");
+		expect(result.model?.id).toBe("claude-3-5-sonnet");
+	});
 });

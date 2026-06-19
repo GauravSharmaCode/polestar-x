@@ -225,11 +225,23 @@ function pickForClass(
 		};
 	}
 
-	// code_edit default
-	// Non-escalated: prefer standard → premium (if no standard) → fast → any
-	// Escalated: prefer premium → standard → any
-	const prefer = escalate ? tiers.premium : tiers.standard.length > 0 ? tiers.standard : tiers.premium;
-	const fallback = escalate ? tiers.standard : tiers.fast;
+	// code_edit: scale tier to complexity so trivial prompts use cheap models.
+	//   escalated / high → premium (fallback standard)
+	//   medium           → standard (fallback fast)
+	//   low              → fast    (fallback standard)
+	// `escalate` already includes complexity === "high" (see shouldEscalate).
+	let prefer: Model<any>[];
+	let fallback: Model<any>[];
+	if (escalate) {
+		prefer = tiers.premium.length > 0 ? tiers.premium : tiers.standard;
+		fallback = tiers.standard;
+	} else if (classification.complexity === "medium") {
+		prefer = tiers.standard.length > 0 ? tiers.standard : tiers.premium;
+		fallback = tiers.fast;
+	} else {
+		prefer = tiers.fast.length > 0 ? tiers.fast : tiers.standard;
+		fallback = tiers.standard;
+	}
 	const model = pickFromTiers(prefer, fallback, available);
 	const baseThinking = classification.suggestedThinking;
 	const thinkingLevel = escalate ? escalateThinkingLevel(baseThinking) : baseThinking;
