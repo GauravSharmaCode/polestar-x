@@ -1,20 +1,13 @@
 import type { Model } from "@earendil-works/pi-ai";
 import { classifyTaskWithComplexity } from "./classify-task.ts";
 import { ModelBlacklist } from "./model-blacklist.ts";
-import { modelRouter } from "./model-router.ts";
+import { modelRouter, modelTierRank } from "./model-router.ts";
 import type { RoutingContext, RoutingDecision } from "./model-router.ts";
 import { getProviderBudget } from "./provider-budget.ts";
 
-/** Tier rank: lower = more capable/preferred. */
-function modelTierRank(model: Model<any>): number {
-	const id = model.id;
-	if (/opus|gpt-5|claude-4|reasoning|claude-3-7|o1|o3/i.test(id)) return 0; // premium
-	if (/sonnet|gpt-4o|pro(?!-mini)/i.test(id)) return 1; // standard
-	if (/haiku|flash|mini|nano/i.test(id)) return 2; // fast
-	return 3; // unknown
-}
-
-/** Sort models so premium > standard > fast, with recurring-budget providers first within each tier. */
+// modelRouter re-tiers and re-sorts internally; this pre-sort only governs the
+// router's last-resort `available[0]` fallback (when every tier for a task class
+// is empty), ensuring even that path prefers higher-tier / recurring-budget models.
 function sortByTierAndBudget(models: Model<any>[]): Model<any>[] {
 	return [...models].sort((a, b) => {
 		const tierDiff = modelTierRank(a) - modelTierRank(b);

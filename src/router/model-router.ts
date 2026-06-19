@@ -45,6 +45,15 @@ function getVersion(model: Model<any>): number {
 	return parseFloat(`${match[1]}.${match[2] || "0"}${match[3] || "0"}`);
 }
 
+/** Tier rank: 0 premium, 1 standard, 2 fast, 3 unknown. Single source of truth for tiering. */
+export function modelTierRank(model: { id: string }): number {
+	const id = model.id;
+	if (/opus|gpt-5|claude-4|reasoning|claude-3-7|o1|o3/i.test(id)) return 0;
+	if (/sonnet|gpt-4o|pro(?!-mini)/i.test(id)) return 1;
+	if (/haiku|flash|mini|nano/i.test(id)) return 2;
+	return 3;
+}
+
 function sortTier(models: Model<any>[], getBudget?: (provider: string) => "recurring" | "limited"): Model<any>[] {
 	return models.sort((a, b) => {
 		if (getBudget) {
@@ -62,11 +71,9 @@ function sortTier(models: Model<any>[], getBudget?: (provider: string) => "recur
 }
 
 function buildTiers(models: Model<any>[], getBudget?: (provider: string) => "recurring" | "limited"): ModelTier {
-	const premium = models.filter((m) => /opus|gpt-5|claude-4|reasoning|claude-3-7|o1|o3/i.test(m.id));
-	const standard = models.filter((m) => /sonnet|gpt-4o|pro(?!-mini)/i.test(m.id) && !premium.includes(m));
-	const fast = models.filter(
-		(m) => /haiku|flash|mini|nano/i.test(m.id) && !premium.includes(m) && !standard.includes(m),
-	);
+	const premium = models.filter((m) => modelTierRank(m) === 0);
+	const standard = models.filter((m) => modelTierRank(m) === 1);
+	const fast = models.filter((m) => modelTierRank(m) === 2);
 	const local = models.filter((m) => isLocalModel(m));
 
 	return {

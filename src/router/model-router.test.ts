@@ -1,6 +1,6 @@
 import type { Model } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
-import { modelRouter } from "./model-router.ts";
+import { modelRouter, modelTierRank } from "./model-router.ts";
 
 function mockModel(id: string, provider = "anthropic"): Model<any> {
 	return {
@@ -118,5 +118,13 @@ describe("modelRouter", () => {
 		});
 		expect(result.taskClass).toBe("code_edit");
 		expect(result.model?.id).toBe("claude-3-5-sonnet");
+	});
+
+	it("modelTierRank ranks premium < standard < fast < unknown", () => {
+		expect(modelTierRank({ id: "claude-3-opus" })).toBe(0);
+		expect(modelTierRank({ id: "gpt-5" })).toBe(0);
+		expect(modelTierRank({ id: "claude-3-5-sonnet" })).toBe(1);
+		expect(modelTierRank({ id: "claude-3-5-haiku" })).toBe(2);
+		expect(modelTierRank({ id: "some-random-model" })).toBe(3);
 	});
 });
