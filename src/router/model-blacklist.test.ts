@@ -77,4 +77,51 @@ describe("ModelBlacklist", () => {
 		const models = [{ id: "a" }, { id: "b" }];
 		expect(bl.filter(models)).toEqual(models);
 	});
+
+	it("recordSuccess lifts an active blacklist immediately", () => {
+		const bl = new ModelBlacklist(1, 60_000);
+		bl.recordFailure("m"); // blacklisted (maxRetries = 1)
+		expect(bl.isBlacklisted("m")).toBe(true);
+		bl.recordSuccess("m");
+		expect(bl.isBlacklisted("m")).toBe(false);
+	});
+
+	it("recordSuccess preserves escalation so repeated failures back off longer", () => {
+		const now = Date.now();
+		vi.spyOn(Date, "now").mockReturnValue(now);
+
+		const bl = new ModelBlacklist(1, 1_000); // base 1s
+		bl.recordFailure("m"); // blacklistCount 1, window 1s
+		bl.recordSuccess("m"); // lifts block, KEEPS blacklistCount = 1
+		bl.recordFailure("m"); // blacklistCount 2, window 2s
+
+		// 1.5s in: a non-escalated 1s window would have expired; the 2s window has not.
+		vi.spyOn(Date, "now").mockReturnValue(now + 1_500);
+		expect(bl.isBlacklisted("m")).toBe(true);
+
+		vi.spyOn(Date, "now").mockReturnValue(now + 2_001);
+		expect(bl.isBlacklisted("m")).toBe(false);
+
+		vi.restoreAllMocks();
+	});
+
+	it("caps backoff at maxBackoffMs", () => {
+		const now = Date.now();
+		vi.spyOn(Date, "now").mockReturnValue(now);
+
+		const bl = new ModelBlacklist(1, 1_000, 3_000); // base 1s, cap 3s
+		bl.recordFailure("m");
+		for (let i = 0; i < 10; i++) {
+			bl.recordSuccess("m"); // lift, keep escalation
+			bl.recordFailure("m"); // escalate again
+		}
+
+		// Without a cap the window would be enormous; with the cap it is exactly 3s.
+		vi.spyOn(Date, "now").mockReturnValue(now + 2_999);
+		expect(bl.isBlacklisted("m")).toBe(true);
+		vi.spyOn(Date, "now").mockReturnValue(now + 3_001);
+		expect(bl.isBlacklisted("m")).toBe(false);
+
+		vi.restoreAllMocks();
+	});
 });
