@@ -82,8 +82,8 @@ describe("modelRouter", () => {
 
 	it("prefers recurring-budget provider when two models have the same tier", () => {
 		// Both are sonnet-tier (standard); limited listed first — proves sorting works
-		const limited = { ...mockModel("claude-3-5-sonnet", "github") };
-		const recurring = { ...mockModel("claude-3-5-sonnet", "anthropic") };
+		const limited = { ...mockModel("claude-3-5-sonnet-limited", "github") };
+		const recurring = { ...mockModel("claude-3-5-sonnet-recurring", "anthropic") };
 		const result = modelRouter.route({
 			prompt: "Change the color scheme from blue to green",
 			turnCount: 0,
