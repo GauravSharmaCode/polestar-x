@@ -117,7 +117,7 @@ describe("RoutingOrchestrator", () => {
 		expect(result.reason).not.toBe("user_pinned");
 	});
 
-	it("prefers recurring-budget providers", () => {
+	it("prefers recurring-budget providers (anthropic=recurring, github=limited per provider-budget.ts)", () => {
 		const orch = new RoutingOrchestrator(5);
 		const result = orch.route(
 			{

@@ -93,7 +93,9 @@ export class RoutingOrchestrator {
 			getProviderBudget,
 		});
 
-		state.lastRouterModelId = decision.model?.id;
+		if (decision.model !== undefined) {
+			state.lastRouterModelId = decision.model.id;
+		}
 		return decision;
 	}
 
