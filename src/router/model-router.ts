@@ -226,7 +226,9 @@ function pickForClass(
 	}
 
 	// code_edit default
-	const prefer = escalate ? tiers.premium : tiers.standard;
+	// Non-escalated: prefer standard → premium (if no standard) → fast → any
+	// Escalated: prefer premium → standard → any
+	const prefer = escalate ? tiers.premium : tiers.standard.length > 0 ? tiers.standard : tiers.premium;
 	const fallback = escalate ? tiers.standard : tiers.fast;
 	const model = pickFromTiers(prefer, fallback, available);
 	const baseThinking = classification.suggestedThinking;
