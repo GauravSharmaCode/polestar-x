@@ -31,6 +31,7 @@ export class ModelBlacklist {
 		const entry = this.entries.get(modelId);
 		if (entry) {
 			entry.failureCount = 0;
+			entry.blacklistCount = 0;
 		}
 	}
 

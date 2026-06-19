@@ -38,6 +38,10 @@ describe("ModelBlacklist", () => {
 		vi.spyOn(Date, "now").mockReturnValue(entry1Until + 1 + 9_000);
 		expect(bl.isBlacklisted("claude-opus")).toBe(true);
 
+		// Exact boundary — should be expired at exactly blacklistedUntil
+		vi.spyOn(Date, "now").mockReturnValue(entry1Until + 1 + 10_000);
+		expect(bl.isBlacklisted("claude-opus")).toBe(false);
+
 		// Advance 1 more second — expired
 		vi.spyOn(Date, "now").mockReturnValue(entry1Until + 1 + 10_001);
 		expect(bl.isBlacklisted("claude-opus")).toBe(false);
