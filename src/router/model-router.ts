@@ -28,6 +28,7 @@ export interface RoutingContext {
 	preferLocal?: boolean;
 	budgetRemaining?: number;
 	currentMode?: string;
+	getProviderBudget?: (provider: string) => "recurring" | "limited";
 }
 
 function isLocalModel(model: { provider: string; id: string }): boolean {
@@ -44,8 +45,13 @@ function getVersion(model: Model<any>): number {
 	return parseFloat(`${match[1]}.${match[2] || "0"}${match[3] || "0"}`);
 }
 
-function sortTier(models: Model<any>[]): Model<any>[] {
+function sortTier(models: Model<any>[], getBudget?: (provider: string) => string): Model<any>[] {
 	return models.sort((a, b) => {
+		if (getBudget) {
+			const aBudget = getBudget(a.provider) === "recurring" ? 0 : 1;
+			const bBudget = getBudget(b.provider) === "recurring" ? 0 : 1;
+			if (aBudget !== bBudget) return aBudget - bBudget;
+		}
 		const aThink = /think|reasoning/i.test(a.id) ? 1 : 0;
 		const bThink = /think|reasoning/i.test(b.id) ? 1 : 0;
 		const aVer = getVersion(a);
@@ -55,7 +61,7 @@ function sortTier(models: Model<any>[]): Model<any>[] {
 	});
 }
 
-function buildTiers(models: Model<any>[]): ModelTier {
+function buildTiers(models: Model<any>[], getBudget?: (provider: string) => string): ModelTier {
 	const premium = models.filter((m) => /opus|gpt-5|claude-4|reasoning|claude-3-7|o1|o3/i.test(m.id));
 	const standard = models.filter((m) => /sonnet|gpt-4o|pro(?!-mini)/i.test(m.id) && !premium.includes(m));
 	const fast = models.filter(
@@ -64,10 +70,10 @@ function buildTiers(models: Model<any>[]): ModelTier {
 	const local = models.filter((m) => isLocalModel(m));
 
 	return {
-		premium: sortTier(premium),
-		standard: sortTier(standard),
-		fast: sortTier(fast),
-		local: sortTier(local),
+		premium: sortTier(premium, getBudget),
+		standard: sortTier(standard, getBudget),
+		fast: sortTier(fast, getBudget),
+		local: sortTier(local, getBudget),
 	};
 }
 
@@ -104,7 +110,7 @@ function escalateThinkingLevel(level: ThinkingLevel): ThinkingLevel {
 
 export class ModelRouter {
 	route(ctx: RoutingContext): RoutingDecision {
-		const tiers = buildTiers(ctx.availableModels);
+		const tiers = buildTiers(ctx.availableModels, ctx.getProviderBudget);
 		const classification = classifyTaskWithComplexity(ctx.prompt, ctx.preferLocal);
 		const shouldEscalate =
 			ctx.previousFailures > 0 || ctx.turnCount > 5 || classification.complexity === "high" || taskLooksStuck(ctx);

@@ -79,4 +79,18 @@ describe("modelRouter", () => {
 		expect(result.model?.id).toBe("claude-3-5-haiku");
 		expect(result.thinkingLevel).toBe("off");
 	});
+
+	it("prefers recurring-budget provider when two models have the same tier", () => {
+		// Both are sonnet-tier (standard); limited listed first — proves sorting works
+		const limited = { ...mockModel("claude-3-5-sonnet", "github") };
+		const recurring = { ...mockModel("claude-3-5-sonnet", "anthropic") };
+		const result = modelRouter.route({
+			prompt: "Change the color scheme from blue to green",
+			turnCount: 0,
+			previousFailures: 0,
+			availableModels: [limited, recurring],
+			getProviderBudget: (p) => (p === "anthropic" ? "recurring" : "limited"),
+		});
+		expect(result.model?.provider).toBe("anthropic");
+	});
 });
