@@ -140,4 +140,35 @@ describe("RoutingOrchestrator", () => {
 		);
 		expect(result.model?.id).toBe("only-model");
 	});
+
+	it("detects a cross-provider switch even when model ids match", () => {
+		const orch = new RoutingOrchestrator(5);
+		// First route: only the anthropic model available; router sets the baseline key.
+		orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 1,
+				previousFailures: 0,
+				currentModel: undefined,
+				availableModels: [mockModel("claude-3-5-sonnet", "anthropic")],
+			},
+			SESSION,
+		);
+		// User switches to the SAME id on a different provider.
+		const pinned = orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 2,
+				previousFailures: 0,
+				currentModel: mockModel("claude-3-5-sonnet", "openrouter"),
+				availableModels: [
+					mockModel("claude-3-5-sonnet", "anthropic"),
+					mockModel("claude-3-5-sonnet", "openrouter"),
+				],
+			},
+			SESSION,
+		);
+		expect(pinned.reason).toBe("user_pinned");
+		expect(pinned.model?.provider).toBe("openrouter");
+	});
 });

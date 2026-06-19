@@ -18,8 +18,13 @@ function sortByTierAndBudget(models: Model<any>[]): Model<any>[] {
 	});
 }
 
+/** Stable identity for a model across providers: two providers can share a model id. */
+function modelKey(model: { provider: string; id: string } | undefined): string | undefined {
+	return model ? `${model.provider}/${model.id}` : undefined;
+}
+
 interface OrchestratorSessionState {
-	lastRouterModelId?: string;
+	lastRouterModelKey?: string;
 	userPinned: boolean;
 }
 
@@ -42,14 +47,16 @@ export class RoutingOrchestrator {
 	resetSession(sessionId: string): void {
 		const state = this.getSessionState(sessionId);
 		state.userPinned = false;
-		state.lastRouterModelId = undefined;
+		state.lastRouterModelKey = undefined;
 	}
 
 	route(ctx: RoutingContext, sessionId: string): RoutingDecision {
 		const state = this.getSessionState(sessionId);
 
-		// Detect user model override: current model differs from what router last set.
-		if (state.lastRouterModelId !== undefined && ctx.currentModel?.id !== state.lastRouterModelId) {
+		// Detect user model override: current model differs from what the router last set.
+		// Key on provider+id so a same-id cross-provider switch is still detected.
+		const currentKey = modelKey(ctx.currentModel);
+		if (state.lastRouterModelKey !== undefined && currentKey !== state.lastRouterModelKey) {
 			state.userPinned = true;
 		}
 
@@ -61,7 +68,7 @@ export class RoutingOrchestrator {
 		// Honor user pin: return their choice with task-appropriate thinking level.
 		if (state.userPinned && ctx.currentModel) {
 			const classification = classifyTaskWithComplexity(ctx.prompt, ctx.preferLocal);
-			state.lastRouterModelId = ctx.currentModel.id;
+			state.lastRouterModelKey = modelKey(ctx.currentModel);
 			return {
 				taskClass: classification.taskClass,
 				complexity: classification.complexity,
@@ -87,7 +94,7 @@ export class RoutingOrchestrator {
 		});
 
 		if (decision.model !== undefined) {
-			state.lastRouterModelId = decision.model.id;
+			state.lastRouterModelKey = modelKey(decision.model);
 		}
 		return decision;
 	}
