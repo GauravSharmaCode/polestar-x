@@ -16,7 +16,7 @@ import {
 import { composeSystemPrompt } from "../prompts/compose-system-prompt.ts";
 import { INIT_ONBOARDING_PROMPT } from "../prompts/init-onboarding.ts";
 import type { RoutingDecision } from "../router/model-router.ts";
-import { modelRouter } from "../router/model-router.ts";
+import { routingOrchestrator } from "../router/routing-orchestrator.ts";
 import { dispatchPendingSelfHealRetry, queueToolFailureRetry } from "../self-heal/auto-retry.ts";
 import { SELF_HEAL_FOLLOW_UP_PREFIX } from "../self-heal/dispatch.ts";
 import { createSelfHealState, resetSelfHealAttempts, type SelfHealState } from "../self-heal/state.ts";
@@ -195,10 +195,13 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 
 	pi.on("turn_end", async (event, ctx) => {
 		const state = getRoutingState(ctx);
+		const activeModelId = ctx.model?.id;
 		if (state.turnHadError || (event.message.role === "assistant" && event.message.stopReason === "error")) {
 			state.consecutiveFailures += 1;
+			if (activeModelId) routingOrchestrator.recordFailure(activeModelId);
 		} else {
 			state.consecutiveFailures = 0;
+			if (activeModelId) routingOrchestrator.recordSuccess(activeModelId);
 			resetSelfHealAttempts(getSelfHealState(ctx));
 		}
 	});
@@ -208,18 +211,22 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		const available = ctx.modelRegistry.getAvailable();
 		if (available.length === 0) return;
 
+		const sessionId = ctx.sessionManager.getSessionId();
 		const routingPrompt = buildRoutingPrompt(
 			event.messages as Array<{ role: string; content: unknown }>,
 			state.initialPrompt ?? "",
 		);
-		const decision = modelRouter.route({
-			prompt: routingPrompt,
-			turnCount: state.turnCount,
-			previousFailures: state.consecutiveFailures,
-			currentModel: ctx.model,
-			availableModels: available,
-			currentMode: getExecutionMode(),
-		});
+		const decision = routingOrchestrator.route(
+			{
+				prompt: routingPrompt,
+				turnCount: state.turnCount,
+				previousFailures: state.consecutiveFailures,
+				currentModel: ctx.model,
+				availableModels: available,
+				currentMode: getExecutionMode(),
+			},
+			sessionId,
+		);
 
 		await applyRoutingDecision(decision, ctx);
 
@@ -257,14 +264,19 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 
 		const available = ctx.modelRegistry.getAvailable();
 		if (available.length > 0) {
-			const initialDecision = modelRouter.route({
-				prompt: event.prompt,
-				turnCount: 0,
-				previousFailures: 0,
-				currentModel: ctx.model,
-				availableModels: available,
-				currentMode: getExecutionMode(),
-			});
+			const sessionId = ctx.sessionManager.getSessionId();
+			routingOrchestrator.resetSession(sessionId);
+			const initialDecision = routingOrchestrator.route(
+				{
+					prompt: event.prompt,
+					turnCount: 0,
+					previousFailures: 0,
+					currentModel: ctx.model,
+					availableModels: available,
+					currentMode: getExecutionMode(),
+				},
+				sessionId,
+			);
 			await applyRoutingDecision(initialDecision, ctx);
 		}
 
