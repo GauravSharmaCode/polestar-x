@@ -3,10 +3,6 @@ dist/
 *.log
 .DS_Store
 *.tsbuildinfo
-# packages/*/node_modules/
-packages/*/dist/
-packages/*/dist-chrome/
-packages/*/dist-firefox/
 *.cpuprofile
 
 # Environment
@@ -21,21 +17,24 @@ packages/*/dist-firefox/
 *.swo
 *~
 
-# Package specific
+# Package artifacts
 .npm/
+*.tgz
+.mcp-schema-cache.db
 coverage/
 .nyc_output/
-.pi_config/
 tui-debug.log
-compaction-results/
 .opencode/
-syntax.jsonl
-out.jsonl
-pi-*.html
-out.html
-packages/coding-agent/binaries/
-todo.md
-plans/
-.pi/hf-sessions/
-.pi/hf-sessions-backup/
-collect.sh
+*.html
+
+# Agent/tools state
+.pi_config/
+.antigravitycli/
+.polestar/
+.superpowers/
+docs/superpowers/
+
+# Vendored assets mirrored in source-checkout
+src/modes/interactive/theme/
+src/modes/interactive/assets/
+src/core/export-html/

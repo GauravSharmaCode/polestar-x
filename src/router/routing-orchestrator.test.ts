@@ -1,0 +1,226 @@
+import type { Model } from "@earendil-works/pi-ai";
+import { describe, expect, it } from "vitest";
+import { RoutingOrchestrator } from "./routing-orchestrator.ts";
+
+function mockModel(id: string, provider = "anthropic"): Model<any> {
+	return {
+		id,
+		provider,
+		name: id,
+		api: "anthropic-messages",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 200000,
+		maxTokens: 8192,
+	} as Model<any>;
+}
+
+const SESSION = "test-session";
+
+describe("RoutingOrchestrator", () => {
+	it("routes normally when no model is pinned", () => {
+		const orch = new RoutingOrchestrator(5);
+		const decision = orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 1,
+				previousFailures: 0,
+				availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")],
+			},
+			SESSION,
+		);
+		expect(decision.model?.id).toBe("claude-3-5-opus");
+		expect(decision.reason).not.toBe("user_pinned");
+	});
+
+	it("pins the user model when they override the router choice", () => {
+		const orch = new RoutingOrchestrator(5);
+		// First route: router picks opus, stores lastRouterModelKey = "anthropic/claude-3-5-opus"
+		orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 1,
+				previousFailures: 0,
+				currentModel: undefined,
+				availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")],
+			},
+			SESSION,
+		);
+
+		// User manually switches to haiku (ctx.currentModel differs from lastRouterModelKey)
+		const pinned = orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 2,
+				previousFailures: 0,
+				currentModel: mockModel("claude-3-5-haiku"),
+				availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")],
+			},
+			SESSION,
+		);
+
+		expect(pinned.model?.id).toBe("claude-3-5-haiku");
+		expect(pinned.reason).toBe("user_pinned");
+	});
+
+	it("keeps honoring the pin on subsequent turns", () => {
+		const orch = new RoutingOrchestrator(5);
+		orch.route(
+			{ prompt: "Do X", turnCount: 1, previousFailures: 0, currentModel: undefined, availableModels: [mockModel("claude-3-5-opus")] },
+			SESSION,
+		);
+		orch.route(
+			{ prompt: "Do X", turnCount: 2, previousFailures: 0, currentModel: mockModel("claude-3-5-haiku"), availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")] },
+			SESSION,
+		);
+		const result = orch.route(
+			{ prompt: "Do Y", turnCount: 3, previousFailures: 0, currentModel: mockModel("claude-3-5-haiku"), availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")] },
+			SESSION,
+		);
+		expect(result.model?.id).toBe("claude-3-5-haiku");
+		expect(result.reason).toBe("user_pinned");
+	});
+
+	it("releases pin when pinned model is blacklisted", () => {
+		const orch = new RoutingOrchestrator(1); // blacklist after 1 failure
+		orch.route(
+			{ prompt: "Do X", turnCount: 1, previousFailures: 0, currentModel: undefined, availableModels: [mockModel("claude-3-5-opus"), mockModel("claude-3-5-haiku")] },
+			SESSION,
+		);
+		orch.route(
+			{ prompt: "Do X", turnCount: 2, previousFailures: 0, currentModel: mockModel("claude-3-5-haiku"), availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")] },
+			SESSION,
+		);
+		// Record failure for pinned model
+		orch.recordFailure(mockModel("claude-3-5-haiku"));
+
+		const result = orch.route(
+			{ prompt: "Do X", turnCount: 3, previousFailures: 1, currentModel: mockModel("claude-3-5-haiku"), availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")] },
+			SESSION,
+		);
+		expect(result.reason).not.toBe("user_pinned");
+		expect(result.model?.id).toBe("claude-3-5-opus");
+	});
+
+	it("resets session state on resetSession", () => {
+		const orch = new RoutingOrchestrator(5);
+		orch.route({ prompt: "X", turnCount: 1, previousFailures: 0, currentModel: undefined, availableModels: [mockModel("claude-3-5-opus")] }, SESSION);
+		orch.route({ prompt: "X", turnCount: 2, previousFailures: 0, currentModel: mockModel("claude-3-5-haiku"), availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")] }, SESSION);
+
+		orch.resetSession(SESSION);
+
+		const result = orch.route(
+			{ prompt: "X", turnCount: 1, previousFailures: 0, currentModel: mockModel("claude-3-5-haiku"), availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")] },
+			SESSION,
+		);
+		expect(result.reason).not.toBe("user_pinned");
+	});
+
+	it("prefers recurring-budget providers (anthropic=recurring, github=limited per provider-budget.ts)", () => {
+		const orch = new RoutingOrchestrator(5);
+		const result = orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 1,
+				previousFailures: 0,
+				availableModels: [mockModel("claude-3-5-opus", "github"), mockModel("claude-3-5-opus", "anthropic")],
+			},
+			SESSION,
+		);
+		expect(result.model?.provider).toBe("anthropic");
+	});
+
+	it("falls back to all models if all are blacklisted", () => {
+		const orch = new RoutingOrchestrator(1);
+		orch.recordFailure(mockModel("only-model"));
+		const result = orch.route(
+			{ prompt: "Fix a bug", turnCount: 1, previousFailures: 1, availableModels: [mockModel("only-model")] },
+			SESSION,
+		);
+		expect(result.model?.id).toBe("only-model");
+	});
+
+	it("detects a cross-provider switch even when model ids match", () => {
+		const orch = new RoutingOrchestrator(5);
+		// First route: only the anthropic model available; router sets the baseline key.
+		orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 1,
+				previousFailures: 0,
+				currentModel: undefined,
+				availableModels: [mockModel("claude-3-5-sonnet", "anthropic")],
+			},
+			SESSION,
+		);
+		// User switches to the SAME id on a different provider.
+		const pinned = orch.route(
+			{
+				prompt: "Fix a bug",
+				turnCount: 2,
+				previousFailures: 0,
+				currentModel: mockModel("claude-3-5-sonnet", "openrouter"),
+				availableModels: [
+					mockModel("claude-3-5-sonnet", "anthropic"),
+					mockModel("claude-3-5-sonnet", "openrouter"),
+				],
+			},
+			SESSION,
+		);
+		expect(pinned.reason).toBe("user_pinned");
+		expect(pinned.model?.provider).toBe("openrouter");
+	});
+
+	it("does not blacklist another provider that exposes the same model id", () => {
+		const orch = new RoutingOrchestrator(1);
+		const failed = mockModel("gpt-4o", "provider-a");
+		const healthy = mockModel("gpt-4o", "provider-b");
+
+		orch.recordFailure(failed);
+
+		const result = orch.route(
+			{
+				prompt: "Design a retry strategy",
+				turnCount: 1,
+				previousFailures: 1,
+				availableModels: [failed, healthy],
+			},
+			SESSION,
+		);
+
+		expect(result.model?.provider).toBe("provider-b");
+	});
+
+	it("keeps a cross-provider pin when a different provider with the same id is blacklisted", () => {
+		const orch = new RoutingOrchestrator(1);
+		const failed = mockModel("gpt-4o", "provider-a");
+		const pinnedHealthy = mockModel("gpt-4o", "provider-b");
+
+		orch.route(
+			{
+				prompt: "Design a retry strategy",
+				turnCount: 1,
+				previousFailures: 0,
+				currentModel: undefined,
+				availableModels: [failed],
+			},
+			SESSION,
+		);
+		orch.recordFailure(failed);
+
+		const pinned = orch.route(
+			{
+				prompt: "Design a retry strategy",
+				turnCount: 2,
+				previousFailures: 0,
+				currentModel: pinnedHealthy,
+				availableModels: [failed, pinnedHealthy],
+			},
+			SESSION,
+		);
+
+		expect(pinned.reason).toBe("user_pinned");
+		expect(pinned.model?.provider).toBe("provider-b");
+	});
+});

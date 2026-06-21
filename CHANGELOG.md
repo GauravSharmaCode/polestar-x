@@ -1,0 +1,142 @@
+# Changelog
+
+All notable changes to PoleStar-X will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.2.1] - 2026-06-21
+
+Patch release focused on router robustness, release smoke reliability on Windows,
+and safer patch application.
+
+### Added
+
+- **Routing orchestrator**: added a session-aware orchestration layer that
+  honors user model pins, tracks per-session router state, and blacklists
+  repeatedly failing models with exponential backoff before re-routing.
+- **Provider budget awareness**: classify model providers as `recurring` or
+  `limited` so equal-tier routing decisions prefer renewable subscription
+  capacity before consuming capped budgets.
+- **Router tests**: expanded coverage for orchestrator pinning, blacklist
+  backoff, provider budget selection, and low/medium/high complexity routing.
+
+### Changed
+
+- **Code-edit routing**: low-complexity edits now prefer fast/cheap models,
+  medium tasks prefer standard models, and escalated/high-complexity work moves
+  to premium tiers.
+- **Memory recall UX**: recalled memory is now folded into the system prompt
+  instead of being emitted as a visible custom message each turn, avoiding
+  duplicate on-screen memory boxes while preserving context for the model.
+- **Vendored pi assets**: build-time asset copying now mirrors pi theme/export
+  assets into both `dist/` and `src/` so source-checkout runs use the same
+  branded assets as published installs.
+
+### Fixed
+
+- **Think -> Write transition**: `plan_exit` now captures the extension API via
+  closure instead of relying on a fragile context cast, fixing mode-switch
+  failures when leaving think/spec/plan mode.
+- **Model failure recovery plumbing**: turn-end success/failure signals now feed
+  router blacklist state so repeated model failures can trigger reroutes.
+- **Provider-aware fallback recovery**: fallback chains and blacklist state now
+  key models by `provider/id`, so a failure on one provider does not suppress a
+  healthy provider exposing the same model id.
+- **Applied-model attribution**: router success/failure tracking now records the
+  model that actually passed `setModel()`, including fallback candidates.
+- **Headless memory recall**: recalled memory status updates now guard optional
+  UI access, so non-interactive runs can still receive memory context without
+  crashing.
+- **Release smoke on Windows**: release automation now prefers Git Bash over
+  WSL `bash`, smoke scripts resolve package paths without brittle `node -p
+  require(...)` detection, and failures surface with clearer guidance.
+- **Patch path safety**: `apply_patch` now rejects target paths and move targets
+  that escape the workspace root.
+
+## [0.2.0] - 2026-06-14
+
+Standalone, sovereign release. PoleStar-X is now a single published package built
+on the pinned pi SDK, with its own identity rather than a full fork of pi-mono.
+
+### Changed
+
+- **Standalone repo**: flattened the pi-mono monorepo to a single package at the
+  repo root. Removed the forked `packages/agent`, `packages/ai`,
+  `packages/coding-agent`, `packages/tui`, and `packages/harness`; the published
+  package consumes the npm-released `@earendil-works/pi-*` instead.
+- **Pinned pi**: all `@earendil-works/pi-*` exact-pinned to `0.79.3` (no `^`/`~`).
+- **Sovereign identity**: the CLI now runs as PoleStar-X, not pi — its own
+  version, `~/.polestar/agent` user config directory, and startup changelog. A
+  one-time migration copies an existing `~/.pi/agent` to `~/.polestar/agent` so
+  upgrading users keep their auth, sessions, and settings.
+
+### Added
+
+- `--init-config` flag to scaffold the project-local `.polestar/` directory
+  without booting the interactive UI (headless/scriptable).
+- Install smoke test (`scripts/smoke.sh`): packs the tarball, installs it
+  globally, and verifies boot, dependency resolution, a live provider round-trip,
+  sovereign version, and config scaffolding.
+- Pi upgrade probe (`scripts/check-pi-upgrade.mjs`): tests a pi version bump in
+  an isolated worktree without committing.
+- Release pipeline (`scripts/release.mjs`): enforced clean → build → test →
+  import-check → smoke → publish → post-publish registry smoke.
+
+### Fixed
+
+- Removed the dead `POLESTAR_APP_PACKAGE_DIR` environment variable (no-op against
+  released pi). Version string in the header now comes from `package.json` instead
+  of a hardcoded literal.
+- **Upstream update notifier suppressed**: pi's startup version check queries its
+  own server and compares against our version, so it fired an "Update Available"
+  box on every launch — advertising pi's version, telling users to `polestar
+  update`, and linking pi's changelog. Bootstrap now sets `PI_SKIP_VERSION_CHECK`
+  (before pi evaluates, so it survives pi upgrades) to disable it.
+- **apply_patch path traversal**: patch hunk paths are now resolved against the
+  workspace and rejected if they escape it, instead of being written anywhere
+  `path.resolve` lands.
+- **plan_exit mode toggle**: replaced the fragile `(ctx as any)._pi` lookup with a
+  `createPlanExitTool(pi)` closure that captures the extension API directly, so the
+  Think→Write transition no longer throws "Extension API reference not found".
+
+## [0.1.1] - 2026-06-14
+
+### Fixed
+
+- Declare all direct runtime imports in `package.json` so global installs resolve modules such as `typebox`, `glob`, `@earendil-works/pi-ai`, and `@earendil-works/pi-agent-core`.
+- Add a publish-time check that fails if built `dist/` imports any package not listed in dependencies.
+
+## [0.1.0] - 2026-06-04
+
+First public npm release (`@gauravsharmacode/polestar-x`).
+
+### Added
+
+- **Model Router**: Automatic task classification and model selection (privacy-local, architecture, exploration, fallback chains).
+- **Self-Healing Retry**: Failure classification and automatic follow-up retries (up to 3 attempts).
+- **Think/Write/Spec/Plan Modes**: Read-only planning, spec/plan restricted writes, and full write mode.
+- **Cross-Session Memory**: pi-memory integration (`memory_search`, logging tools, `/remember`, `/recall`).
+- **MCP Bridge**: Stdio MCP servers from `.polestar/mcp.json` with `/mcp` status.
+- **Tools**: `glob`, `webfetch`, `websearch`, `apply_patch`, `todowrite`, `question`, `manage_rule`, `manage_skill`, `task`.
+- **Commands**: `/init`, `/init-config`, `/tools`, `/hooks`, `/spec`, `/draft`, `/plan`.
+- **Model Routing**: Version sorting, provider interleaving, mode-aware routing for think/plan.
+- **Sub-Agent Config**: Default `research.md` in `.polestar/agents/` via `/init-config`.
+- **UI**: Lightweight Markdown rendering for `websearch` and `memory_search` results.
+- **Branding**: Custom PoleStar-X header and status indicators.
+
+### Fixed
+
+- Interactive `/exit` slash command quits the TUI (alias for `/quit`; requires `@earendil-works/pi-coding-agent` >= 0.78.1).
+
+### Dependencies
+
+- `@earendil-works/pi-coding-agent`: ^0.78.0
+- `@earendil-works/pi-tui`: ^0.78.0
+- `@gauravsharmacode/pi-memory`: 1.0.0
+- `htmlparser2`: 9.1.0
+- `turndown`: 7.2.0
+
+[0.1.0]: https://github.com/GauravSharmaCode/polestar-x/releases/tag/v0.1.0

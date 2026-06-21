@@ -1,203 +1,229 @@
 #!/usr/bin/env node
 /**
- * Release script for pi-mono
+ * PoleStar-X release pipeline.
  *
  * Usage:
- *   node scripts/release.mjs <major|minor|patch>
- *   node scripts/release.mjs <x.y.z>
+ *   node scripts/release.mjs [--bump patch|minor|major] [--dry-run]
  *
- * Steps:
- * 1. Check for uncommitted changes
- * 2. Bump version via npm run version:xxx or set an explicit version
- * 3. Update CHANGELOG.md files: [Unreleased] -> [version] - date
- * 4. Regenerate release artifacts
- * 5. Run checks
- * 6. Commit and tag the release
- * 7. Add new [Unreleased] section to changelogs
- * 8. Commit next-cycle changelog updates
- * 9. Push main and the tag to trigger CI publishing
+ * With no --bump, releases whatever version is in package.json as-is.
+ * --dry-run runs every gate but skips the version bump, commit, tag, publish, and push.
+ *
+ * Pipeline (abort on first failure):
+ *   1.  Working tree clean
+ *   2.  npm ci --ignore-scripts
+ *   3.  npm run build
+ *   4.  vitest --run (unit tests)
+ *   5.  scripts/check-package-import-deps.mjs
+ *   6.  scripts/smoke.sh   (pack → global install → boot + deps + live + /init-config)
+ *   7.  Version bump in package.json + CHANGELOG.md entry  [skipped with --dry-run]
+ *   8.  git commit + tag                                    [skipped with --dry-run]
+ *   9.  npm publish --access public                         [skipped with --dry-run]
+ *  10.  git push --follow-tags                              [skipped with --dry-run]
+ *  11.  Post-publish registry smoke: install from npm + boot check
  */
+import { execSync, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { execSync } from "child_process";
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "fs";
-import { join } from "path";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const RELEASE_TARGET = process.argv[2];
-const BUMP_TYPES = new Set(["major", "minor", "patch"]);
-const SEMVER_RE = /^\d+\.\d+\.\d+$/;
+// --- CLI args ---------------------------------------------------------------
+const argv = process.argv.slice(2);
+const dryRun = argv.includes("--dry-run");
+const bumpIdx = argv.indexOf("--bump");
+const bumpType = bumpIdx >= 0 ? argv[bumpIdx + 1] : null;
 
-if (!RELEASE_TARGET || (!BUMP_TYPES.has(RELEASE_TARGET) && !SEMVER_RE.test(RELEASE_TARGET))) {
-	console.error("Usage: node scripts/release.mjs <major|minor|patch|x.y.z>");
+if (bumpType && !["patch", "minor", "major"].includes(bumpType)) {
+	console.error('--bump must be patch, minor, or major');
 	process.exit(1);
 }
 
-function run(cmd, options = {}) {
-	console.log(`$ ${cmd}`);
-	try {
-		return execSync(cmd, { encoding: "utf-8", stdio: options.silent ? "pipe" : "inherit", ...options });
-	} catch (e) {
-		if (!options.ignoreError) {
-			console.error(`Command failed: ${cmd}`);
-			process.exit(1);
-		}
-		return null;
+// --- helpers ----------------------------------------------------------------
+const bold = (s) => `\x1b[1m${s}\x1b[0m`;
+const ok   = (s) => console.log(`  \x1b[32m✓\x1b[0m ${s}`);
+const step = (n, s) => console.log(bold(`\n[${n}] ${s}`));
+
+function npm() {
+	return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+// Resolve the bash that smoke.sh is written for. On Windows, a bare `bash` on
+// PATH frequently resolves to the WSL launcher (C:\Windows\System32\bash.exe);
+// under WSL the Windows paths smoke.sh builds (cygpath, .cmd shims, and
+// `node -p require('C:/...')`) break, and detection silently falls back to the
+// dead packages/polestar monorepo path — the "no package.json at .../packages/
+// polestar" SMOKE FAIL. Git Bash is the shell smoke.sh targets, so prefer it.
+function bashExe() {
+	if (process.platform !== "win32") return "bash";
+	const candidates = [
+		join(process.env.ProgramFiles || "C:\\Program Files", "Git", "bin", "bash.exe"),
+		join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Git", "bin", "bash.exe"),
+		join(process.env.LOCALAPPDATA || "", "Programs", "Git", "bin", "bash.exe"),
+	];
+	for (const candidate of candidates) {
+		if (candidate && existsSync(candidate)) return candidate;
+	}
+	return "bash"; // last resort — smoke.sh fails fast with a clear message if this is WSL
+}
+
+function run(command, args, { cwd = ROOT, env = {}, shell = process.platform === "win32" } = {}) {
+	console.log(`  $ ${command} ${args.join(" ")}`);
+	const result = spawnSync(command, args, {
+		cwd,
+		stdio: "inherit",
+		shell,
+		env: { ...process.env, ...env },
+	});
+	if (result.status !== 0) {
+		throw new Error(`Command failed: ${command} ${args.join(" ")}`);
 	}
 }
 
-function getVersion() {
-	const pkg = JSON.parse(readFileSync("packages/ai/package.json", "utf-8"));
-	return pkg.version;
-}
-
-function compareVersions(a, b) {
-	const aParts = a.split(".").map(Number);
-	const bParts = b.split(".").map(Number);
-
-	for (let i = 0; i < 3; i++) {
-		const diff = (aParts[i] || 0) - (bParts[i] || 0);
-		if (diff !== 0) {
-			return diff;
-		}
+function runCapture(command, args, cwd = ROOT) {
+	const result = spawnSync(command, args, {
+		cwd,
+		encoding: "utf8",
+		shell: process.platform === "win32",
+	});
+	if (result.status !== 0) {
+		throw new Error(result.stderr?.trim() || `Command failed: ${command} ${args.join(" ")}`);
 	}
-
-	return 0;
+	return result.stdout.trim();
 }
 
-function shellQuote(value) {
-	return `'${value.replace(/'/g, `'\\''`)}'`;
+function bumpVersion(version, type) {
+	const [maj, min, pat] = version.split(".").map(Number);
+	if (type === "major") return `${maj + 1}.0.0`;
+	if (type === "minor") return `${maj}.${min + 1}.0`;
+	if (type === "patch") return `${maj}.${min}.${pat + 1}`;
+	throw new Error(`Unknown bump type: ${type}`);
 }
 
-function stageChangedFiles() {
-	const output = run("git ls-files -m -o -d --exclude-standard", { silent: true });
-	const paths = [...new Set((output || "").split("\n").map((line) => line.trim()).filter(Boolean))];
-	if (paths.length === 0) {
-		return;
-	}
-
-	run(`git add -- ${paths.map(shellQuote).join(" ")}`);
+function readPkg() {
+	return JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 }
 
-function bumpOrSetVersion(target) {
-	const currentVersion = getVersion();
-
-	if (BUMP_TYPES.has(target)) {
-		console.log(`Bumping version (${target})...`);
-		run(`npm run version:${target}`);
-		return getVersion();
-	}
-
-	if (compareVersions(target, currentVersion) <= 0) {
-		console.error(`Error: explicit version ${target} must be greater than current version ${currentVersion}.`);
-		process.exit(1);
-	}
-
-	console.log(`Setting explicit version (${target})...`);
-	run(`npm version ${target} -ws --no-git-tag-version && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts`);
-	return getVersion();
+function writePkg(pkg) {
+	writeFileSync(join(ROOT, "package.json"), JSON.stringify(pkg, null, "\t") + "\n");
 }
 
-function getChangelogs() {
-	const packagesDir = "packages";
-	const packages = readdirSync(packagesDir);
-	return packages
-		.map((pkg) => join(packagesDir, pkg, "CHANGELOG.md"))
-		.filter((path) => existsSync(path));
-}
+// --- pre-flight -------------------------------------------------------------
+const pkg = readPkg();
+const releaseVersion = bumpType ? bumpVersion(pkg.version, bumpType) : pkg.version;
 
-function updateChangelogsForRelease(version) {
-	const date = new Date().toISOString().split("T")[0];
-	const changelogs = getChangelogs();
-
-	for (const changelog of changelogs) {
-		const content = readFileSync(changelog, "utf-8");
-
-		if (!content.includes("## [Unreleased]")) {
-			console.log(`  Skipping ${changelog}: no [Unreleased] section`);
-			continue;
-		}
-
-		const updated = content.replace(
-			"## [Unreleased]",
-			`## [${version}] - ${date}`
-		);
-		writeFileSync(changelog, updated);
-		console.log(`  Updated ${changelog}`);
-	}
-}
-
-function addUnreleasedSection() {
-	const changelogs = getChangelogs();
-	const unreleasedSection = "## [Unreleased]\n\n";
-
-	for (const changelog of changelogs) {
-		const content = readFileSync(changelog, "utf-8");
-
-		// Insert after "# Changelog\n\n"
-		const updated = content.replace(
-			/^(# Changelog\n\n)/,
-			`$1${unreleasedSection}`
-		);
-		writeFileSync(changelog, updated);
-		console.log(`  Added [Unreleased] to ${changelog}`);
-	}
-}
-
-// Main flow
-console.log("\n=== Release Script ===\n");
-
-// 1. Check for uncommitted changes
-console.log("Checking for uncommitted changes...");
-const status = run("git status --porcelain", { silent: true });
-if (status && status.trim()) {
-	console.error("Error: Uncommitted changes detected. Commit or stash first.");
-	console.error(status);
-	process.exit(1);
-}
-console.log("  Working directory clean\n");
-
-// 2. Bump or set version
-const version = bumpOrSetVersion(RELEASE_TARGET);
-console.log(`  New version: ${version}\n`);
-
-// 3. Update changelogs
-console.log("Updating CHANGELOG.md files...");
-updateChangelogsForRelease(version);
+console.log(bold(`\nPoleStar-X release pipeline`));
+console.log(`  package:  ${pkg.name}`);
+console.log(`  current:  ${pkg.version}`);
+console.log(`  release:  ${releaseVersion}`);
+if (dryRun) console.log(`  mode:     DRY RUN (no commit/publish)`);
 console.log();
 
-// 4. Regenerate release artifacts
-console.log("Regenerating release artifacts...");
-run("npm --prefix packages/ai run generate-models");
-run("npm --prefix packages/ai run generate-image-models");
-run("npm run shrinkwrap:coding-agent");
-console.log();
+// 1. Working tree clean
+step(1, "Working tree clean");
+const dirty = runCapture("git", ["status", "--porcelain"]);
+if (dirty) {
+	throw new Error(`Working tree is dirty — commit or stash first:\n${dirty}`);
+}
+ok("clean");
 
-// 5. Run checks
-console.log("Running checks...");
-run("npm run check");
-console.log();
+// 2. Install
+step(2, "npm ci --ignore-scripts");
+run(npm(), ["ci", "--ignore-scripts"]);
+ok("deps installed");
 
-// 6. Commit and tag
-console.log("Committing and tagging...");
-stageChangedFiles();
-run(`git commit -m "Release v${version}"`);
-run(`git tag v${version}`);
-console.log();
+// 3. Build
+step(3, "npm run build");
+run(npm(), ["run", "build"]);
+ok("build clean");
 
-// 7. Add new [Unreleased] sections
-console.log("Adding [Unreleased] sections for next cycle...");
-addUnreleasedSection();
-console.log();
+// 4. Unit tests
+step(4, "vitest --run");
+run(npm(), ["test"]);
+ok("all tests passed");
 
-// 8. Commit
-console.log("Committing changelog updates...");
-stageChangedFiles();
-run(`git commit -m "Add [Unreleased] section for next cycle"`);
-console.log();
+// 5. Import dep check
+step(5, "import dep check");
+run("node", ["scripts/check-package-import-deps.mjs", "."], { cwd: ROOT });
+ok("all runtime imports declared");
 
-// 9. Push
-console.log("Pushing to remote...");
-run("git push origin main");
-run(`git push origin v${version}`);
-console.log();
+// 6. Pre-publish smoke (pack → global install → boot + deps + provider + /init-config)
+step(6, "smoke.sh (pre-publish local install)");
+// shell:false so a Git Bash path containing spaces ("C:\Program Files\...")
+// is passed straight to CreateProcess instead of being re-split by cmd.exe.
+run(bashExe(), ["scripts/smoke.sh"], { cwd: ROOT, shell: false });
+ok("smoke passed");
 
-console.log(`=== Prepared release v${version}; CI publishing starts after the tag push ===`);
+if (dryRun) {
+	console.log(bold("\n  Dry run complete. All pre-publish gates passed."));
+	console.log("  Re-run without --dry-run to publish.\n");
+	process.exit(0);
+}
+
+// 7. Version bump
+step(7, `version bump${bumpType ? ` (${bumpType}: ${pkg.version} → ${releaseVersion})` : " (none)"}`);
+if (bumpType) {
+	const p = readPkg();
+	p.version = releaseVersion;
+	writePkg(p);
+	ok(`package.json version → ${releaseVersion}`);
+
+	const changelogPath = join(ROOT, "CHANGELOG.md");
+	const today = new Date().toISOString().slice(0, 10);
+	const existing = existsSync(changelogPath) ? readFileSync(changelogPath, "utf8") : "";
+	const entry = `## ${releaseVersion} (${today})\n\n_Add release notes here before tagging._\n\n`;
+	writeFileSync(changelogPath, entry + existing);
+	ok(`CHANGELOG.md prepended ${releaseVersion} entry`);
+} else {
+	ok(`keeping version ${releaseVersion}`);
+}
+
+// 8. Commit + tag
+step(8, "git commit + tag");
+run("git", ["add", "package.json", "CHANGELOG.md"]);
+run("git", ["commit", "-m", `chore(release): v${releaseVersion}`]);
+run("git", ["tag", `v${releaseVersion}`]);
+ok(`tagged v${releaseVersion}`);
+
+// 9. Publish
+step(9, "npm publish");
+run(npm(), ["publish", "--access", "public"]);
+ok(`published ${pkg.name}@${releaseVersion}`);
+
+// 10. Push
+step(10, "git push --follow-tags");
+run("git", ["push", "--follow-tags"]);
+ok("pushed branch + tag");
+
+// 11. Post-publish registry smoke
+//     Install from the real registry and verify the artifact boots.
+//     This is the gate 0.1.0 was missing: local pack != what npm ships.
+step(11, "post-publish registry smoke");
+console.log("  Installing from npm registry…");
+
+run(npm(), ["install", "-g", "--ignore-scripts", `${pkg.name}@${releaseVersion}`]);
+
+const npmGlobalPrefix = runCapture(npm(), ["prefix", "-g"]);
+const binPath = process.platform === "win32"
+	? join(npmGlobalPrefix, "polestar.cmd")
+	: join(npmGlobalPrefix, "bin", "polestar");
+
+const versionOut = spawnSync(binPath, ["--version"], { encoding: "utf8" });
+if (versionOut.status !== 0) {
+	throw new Error("Registry install failed --version check");
+}
+ok(`--version: ${versionOut.stdout.trim()}`);
+
+const modelsOut = spawnSync(binPath, ["--list-models"], { encoding: "utf8" });
+if (modelsOut.status !== 0) {
+	throw new Error("Registry install failed --list-models (provider catalog broken)");
+}
+ok("--list-models clean");
+
+run(npm(), ["uninstall", "-g", pkg.name]);
+ok("registry global cleaned up");
+
+// --- done -------------------------------------------------------------------
+console.log(bold(`\n  Release ${releaseVersion} complete.\n`));
+console.log(`  npm:  https://www.npmjs.com/package/${pkg.name}`);
+console.log(`  tag:  v${releaseVersion}\n`);

@@ -2,20 +2,18 @@ name: Bug Report
 description: Report something that's broken
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        **Before you start:** Read [CONTRIBUTING.md](https://github.com/earendil-works/pi-mono/blob/main/CONTRIBUTING.md).
-
-        New issues from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. Issues that do not meet the quality bar in [CONTRIBUTING.md](https://github.com/earendil-works/pi-mono/blob/main/CONTRIBUTING.md) will not be reopened or receive a reply.
-
-        Keep this short. If it doesn't fit on one screen, it's too long. Write in your own voice.
-
   - type: textarea
     id: description
     attributes:
       label: What happened?
-      description: Be specific. Include error messages if any.
+      description: Be specific. Include error messages, polestar version, and OS.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
     validations:
       required: true
 
@@ -23,21 +21,6 @@ body:
     id: repro
     attributes:
       label: Steps to reproduce
-      description: Minimal steps to trigger the bug.
+      description: Minimal steps to reproduce the issue.
     validations:
       required: true
-
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior
-    validations:
-      required: false
-
-  - type: input
-    id: version
-    attributes:
-      label: Version
-      description: e.g. 0.49.0
-    validations:
-      required: false

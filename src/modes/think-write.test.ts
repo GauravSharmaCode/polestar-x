@@ -1,0 +1,120 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getExecutionMode, POLESTAR_DEFAULT_TOOLS, setExecutionMode, createPlanExitTool } from "./think-write.ts";
+
+describe("Think and Write Modes Controller", () => {
+	let activeTools: string[] = [];
+	let mockPi: any;
+	let mockCtx: any;
+
+	beforeEach(() => {
+		activeTools = [...POLESTAR_DEFAULT_TOOLS];
+		mockPi = {
+			getActiveTools: () => activeTools,
+			setActiveTools: (tools: string[]) => {
+				activeTools = tools;
+			},
+		};
+		mockCtx = {
+			ui: {
+				setStatus: vi.fn(),
+				notify: vi.fn(),
+			},
+		};
+	});
+
+	it("should initialize in Write mode", () => {
+		expect(getExecutionMode()).toBe("write");
+	});
+
+	it("should filter out mutating tools when transitioning to Think mode", () => {
+		setExecutionMode(mockPi, "think", mockCtx);
+		expect(getExecutionMode()).toBe("think");
+
+		// Mutating tools should be filtered out
+		expect(activeTools).not.toContain("edit");
+		expect(activeTools).not.toContain("write");
+		expect(activeTools).not.toContain("apply_patch");
+		expect(activeTools).not.toContain("todowrite");
+		expect(activeTools).not.toContain("bash");
+
+		// Read-only tools should remain
+		expect(activeTools).toContain("read");
+		expect(activeTools).toContain("grep");
+		expect(activeTools).toContain("glob");
+
+		// plan_exit should be added
+		expect(activeTools).toContain("plan_exit");
+
+		// Status line indicator should be updated
+		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "⏸ think");
+	});
+
+	it("should restore full default tools when transitioning to Write mode", () => {
+		// First transition to think
+		setExecutionMode(mockPi, "think", mockCtx);
+		expect(activeTools).not.toContain("edit");
+
+		// Transition back to write
+		setExecutionMode(mockPi, "write", mockCtx);
+		expect(getExecutionMode()).toBe("write");
+
+		// All tools should be restored
+		expect(activeTools).toContain("edit");
+		expect(activeTools).toContain("write");
+		expect(activeTools).toContain("apply_patch");
+		expect(activeTools).not.toContain("plan_exit");
+		expect(activeTools).not.toContain("restricted_write");
+
+		// Status line indicator should be updated
+		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "✎ write");
+	});
+
+	it("should filter mutating tools and add restricted_write for spec mode", () => {
+		setExecutionMode(mockPi, "spec", mockCtx);
+		expect(getExecutionMode()).toBe("spec");
+
+		expect(activeTools).not.toContain("edit");
+		expect(activeTools).not.toContain("write");
+		expect(activeTools).toContain("restricted_write");
+		expect(activeTools).toContain("plan_exit");
+
+		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "📝 spec");
+	});
+
+	it("should filter mutating tools and add restricted_write for plan mode", () => {
+		setExecutionMode(mockPi, "plan", mockCtx);
+		expect(getExecutionMode()).toBe("plan");
+
+		expect(activeTools).not.toContain("edit");
+		expect(activeTools).not.toContain("write");
+		expect(activeTools).toContain("restricted_write");
+		expect(activeTools).toContain("plan_exit");
+
+		expect(mockCtx.ui.setStatus).toHaveBeenCalledWith("mode", "📋 plan");
+	});
+
+	describe("createPlanExitTool", () => {
+		it("should switch mode to write on consent", async () => {
+			const pi = mockPi;
+			const tool = createPlanExitTool(pi);
+			mockCtx.hasUI = true;
+			mockCtx.ui.confirm = vi.fn().mockResolvedValue(true);
+
+			const result = await tool.execute("id", { explanation: "test" }, undefined, undefined, mockCtx);
+			expect(result.content[0].text).toContain("Successfully transitioned to Write mode");
+			expect(getExecutionMode()).toBe("write");
+		});
+
+		it("should remain in think mode on rejection", async () => {
+			const pi = mockPi;
+			const tool = createPlanExitTool(pi);
+			mockCtx.hasUI = true;
+			mockCtx.ui.confirm = vi.fn().mockResolvedValue(false);
+			setExecutionMode(pi, "think", mockCtx);
+
+			const result = await tool.execute("id", { explanation: "test" }, undefined, undefined, mockCtx);
+			expect(result.content[0].text).toContain("Transition rejected by user");
+			expect(getExecutionMode()).toBe("think");
+		});
+	});
+});
