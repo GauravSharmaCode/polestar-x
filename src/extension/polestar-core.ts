@@ -43,6 +43,8 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		turnCount: number;
 		consecutiveFailures: number;
 		turnHadError: boolean;
+		/** id of the model the orchestrator applied for the current turn (for failure attribution). */
+		activeModelId?: string;
 	}
 	const sessionRoutingState = new Map<string, RoutingState>();
 	const sessionSelfHealState = new Map<string, SelfHealState>();
@@ -195,7 +197,8 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 
 	pi.on("turn_end", async (event, ctx) => {
 		const state = getRoutingState(ctx);
-		const activeModelId = ctx.model?.id;
+		// Prefer the model we applied for this turn; fall back to ctx.model if unset.
+		const activeModelId = state.activeModelId ?? ctx.model?.id;
 		if (state.turnHadError || (event.message.role === "assistant" && event.message.stopReason === "error")) {
 			state.consecutiveFailures += 1;
 			if (activeModelId) routingOrchestrator.recordFailure(activeModelId);
@@ -229,6 +232,9 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		);
 
 		await applyRoutingDecision(decision, ctx);
+		// Remember what we actually applied so turn_end attributes success/failure
+		// to the model that ran this turn, not whatever ctx.model becomes next.
+		state.activeModelId = decision.model?.id;
 
 		if (ctx.ui) {
 			const modelLabel = decision.model ? `${decision.model.provider}/${decision.model.id}` : "(no model)";
@@ -248,7 +254,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 
 		const systemPrompt = composeSystemPrompt(event.systemPrompt);
 		const memoryMd = await memory.readMemoryFile();
-		const mergedPrompt = memoryMd ? `${systemPrompt}\n\n## Long-term memory\n${memoryMd}` : systemPrompt;
+		let mergedPrompt = memoryMd ? `${systemPrompt}\n\n## Long-term memory\n${memoryMd}` : systemPrompt;
 
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), MEMORY_SEARCH_TIMEOUT_MS);
@@ -265,7 +271,9 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		const available = ctx.modelRegistry.getAvailable();
 		if (available.length > 0) {
 			const sessionId = ctx.sessionManager.getSessionId();
-			routingOrchestrator.resetSession(sessionId);
+			// Do NOT resetSession here: the user's model pin must survive across messages
+			// and self-heal retries. The orchestrator releases the pin on its own when the
+			// pinned model is blacklisted.
 			const initialDecision = routingOrchestrator.route(
 				{
 					prompt: event.prompt,
@@ -280,15 +288,17 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 			await applyRoutingDecision(initialDecision, ctx);
 		}
 
+		// Fold recalled memory into the system prompt instead of emitting a
+		// displayed custom message. pi's convertToLlm ignores `display` for
+		// custom messages, so a displayed message put the block in front of the
+		// model AND rendered a box on every turn — and, being a message, a fresh
+		// copy accumulated in history each turn. As system-prompt content it
+		// still reaches the model, renders nothing, and is replaced (not stacked)
+		// per turn. A single status-bar line is the only visible signal.
 		if (memoryBlock) {
-			return {
-				systemPrompt: mergedPrompt,
-				message: {
-					customType: "polestar_memory",
-					content: memoryBlock,
-					display: true,
-				},
-			};
+			const count = memoryBlock.split("\n").length - 1;
+			mergedPrompt = `${mergedPrompt}\n\n${memoryBlock}`;
+			ctx.ui.setStatus("memory", `🧠 ${count} recalled`);
 		}
 
 		return { systemPrompt: mergedPrompt };
