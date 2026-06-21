@@ -1,6 +1,6 @@
 {
 	"name": "@gauravsharmacode/polestar-x",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "PoleStar-X sovereign coding agent CLI — built on the pi SDK with enhanced model routing, self-healing retry, and cross-session memory",
 	"type": "module",
 	"license": "MIT",

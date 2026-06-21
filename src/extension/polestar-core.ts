@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -16,6 +17,7 @@ import {
 import { composeSystemPrompt } from "../prompts/compose-system-prompt.ts";
 import { INIT_ONBOARDING_PROMPT } from "../prompts/init-onboarding.ts";
 import type { RoutingDecision } from "../router/model-router.ts";
+import type { ModelIdentity } from "../router/routing-orchestrator.ts";
 import { routingOrchestrator } from "../router/routing-orchestrator.ts";
 import { dispatchPendingSelfHealRetry, queueToolFailureRetry } from "../self-heal/auto-retry.ts";
 import { SELF_HEAL_FOLLOW_UP_PREFIX } from "../self-heal/dispatch.ts";
@@ -43,8 +45,8 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		turnCount: number;
 		consecutiveFailures: number;
 		turnHadError: boolean;
-		/** id of the model the orchestrator applied for the current turn (for failure attribution). */
-		activeModelId?: string;
+		/** Model that actually ran this turn, including provider for attribution. */
+		activeModel?: ModelIdentity;
 	}
 	const sessionRoutingState = new Map<string, RoutingState>();
 	const sessionSelfHealState = new Map<string, SelfHealState>();
@@ -96,7 +98,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	const applyRoutingDecision = async (
 		decision: RoutingDecision,
 		ctx: { model: { id: string; provider: string } | undefined },
-	) => {
+	): Promise<ModelIdentity | undefined> => {
 		if (decision.taskClass === "privacy_local" && !decision.model) {
 			throw new Error(
 				"Security Block: This task involves sensitive/privacy data, but no local model (Ollama/local) is available to handle it safely.",
@@ -111,15 +113,20 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 			current.provider === desired.provider &&
 			current.id === desired.id;
 
+		let appliedModel: Model<any> | ModelIdentity | undefined = currentMatchesDesired ? current : undefined;
 		if (desired && !currentMatchesDesired) {
 			const fallbackChain = decision.fallbackChain.length > 0 ? decision.fallbackChain : [desired];
 			for (const candidate of fallbackChain) {
 				const ok = await pi.setModel(candidate);
-				if (ok) break;
+				if (ok) {
+					appliedModel = candidate;
+					break;
+				}
 			}
 		}
 
 		pi.setThinkingLevel(decision.thinkingLevel);
+		return appliedModel ?? ctx.model;
 	};
 
 	// Register all new tools
@@ -193,18 +200,19 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		const state = getRoutingState(ctx);
 		state.turnCount = event.turnIndex + 1;
 		state.turnHadError = false;
+		state.activeModel = undefined;
 	});
 
 	pi.on("turn_end", async (event, ctx) => {
 		const state = getRoutingState(ctx);
 		// Prefer the model we applied for this turn; fall back to ctx.model if unset.
-		const activeModelId = state.activeModelId ?? ctx.model?.id;
+		const activeModel = state.activeModel ?? ctx.model;
 		if (state.turnHadError || (event.message.role === "assistant" && event.message.stopReason === "error")) {
 			state.consecutiveFailures += 1;
-			if (activeModelId) routingOrchestrator.recordFailure(activeModelId);
+			if (activeModel) routingOrchestrator.recordFailure(activeModel);
 		} else {
 			state.consecutiveFailures = 0;
-			if (activeModelId) routingOrchestrator.recordSuccess(activeModelId);
+			if (activeModel) routingOrchestrator.recordSuccess(activeModel);
 			resetSelfHealAttempts(getSelfHealState(ctx));
 		}
 	});
@@ -231,10 +239,9 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 			sessionId,
 		);
 
-		await applyRoutingDecision(decision, ctx);
+		state.activeModel = await applyRoutingDecision(decision, ctx);
 		// Remember what we actually applied so turn_end attributes success/failure
 		// to the model that ran this turn, not whatever ctx.model becomes next.
-		state.activeModelId = decision.model?.id;
 
 		if (ctx.ui) {
 			const modelLabel = decision.model ? `${decision.model.provider}/${decision.model.id}` : "(no model)";
@@ -248,6 +255,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		state.turnCount = 0;
 		state.consecutiveFailures = 0;
 		state.turnHadError = false;
+		state.activeModel = undefined;
 		if (!event.prompt.startsWith(SELF_HEAL_FOLLOW_UP_PREFIX)) {
 			resetSelfHealAttempts(getSelfHealState(ctx));
 		}
@@ -285,7 +293,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 				},
 				sessionId,
 			);
-			await applyRoutingDecision(initialDecision, ctx);
+			state.activeModel = await applyRoutingDecision(initialDecision, ctx);
 		}
 
 		// Fold recalled memory into the system prompt instead of emitting a
@@ -298,7 +306,7 @@ export const polestarCoreExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		if (memoryBlock) {
 			const count = memoryBlock.split("\n").length - 1;
 			mergedPrompt = `${mergedPrompt}\n\n${memoryBlock}`;
-			ctx.ui.setStatus("memory", `🧠 ${count} recalled`);
+			ctx.ui?.setStatus("memory", `🧠 ${count} recalled`);
 		}
 
 		return { systemPrompt: mergedPrompt };

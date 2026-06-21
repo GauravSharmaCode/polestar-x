@@ -18,8 +18,13 @@ function sortByTierAndBudget(models: Model<any>[]): Model<any>[] {
 	});
 }
 
+export interface ModelIdentity {
+	provider: string;
+	id: string;
+}
+
 /** Stable identity for a model across providers: two providers can share a model id. */
-function modelKey(model: { provider: string; id: string } | undefined): string | undefined {
+export function modelKey(model: ModelIdentity | undefined): string | undefined {
 	return model ? `${model.provider}/${model.id}` : undefined;
 }
 
@@ -36,12 +41,14 @@ export class RoutingOrchestrator {
 		this.blacklist = new ModelBlacklist(maxRetries);
 	}
 
-	recordFailure(modelId: string): void {
-		this.blacklist.recordFailure(modelId);
+	recordFailure(model: ModelIdentity): void {
+		const key = modelKey(model);
+		if (key) this.blacklist.recordFailure(key);
 	}
 
-	recordSuccess(modelId: string): void {
-		this.blacklist.recordSuccess(modelId);
+	recordSuccess(model: ModelIdentity): void {
+		const key = modelKey(model);
+		if (key) this.blacklist.recordSuccess(key);
 	}
 
 	resetSession(sessionId: string): void {
@@ -61,7 +68,8 @@ export class RoutingOrchestrator {
 		}
 
 		// Release pin if the user's chosen model is blacklisted.
-		if (state.userPinned && ctx.currentModel && this.blacklist.isBlacklisted(ctx.currentModel.id)) {
+		const currentModelKey = modelKey(ctx.currentModel);
+		if (state.userPinned && currentModelKey && this.blacklist.isBlacklisted(currentModelKey)) {
 			state.userPinned = false;
 		}
 
@@ -80,7 +88,10 @@ export class RoutingOrchestrator {
 		}
 
 		// Filter blacklisted; fall back to full list only if everything is blacklisted.
-		const eligible = this.blacklist.filter(ctx.availableModels);
+		const eligible = ctx.availableModels.filter((model) => {
+			const key = modelKey(model);
+			return key ? !this.blacklist.isBlacklisted(key) : true;
+		});
 		const candidates = eligible.length > 0 ? eligible : ctx.availableModels;
 
 		// Sort so higher-tier / recurring-budget models are preferred when the router

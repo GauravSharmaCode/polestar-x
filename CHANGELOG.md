@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-21
+
+Patch release focused on router robustness, release smoke reliability on Windows,
+and safer patch application.
+
+### Added
+
+- **Routing orchestrator**: added a session-aware orchestration layer that
+  honors user model pins, tracks per-session router state, and blacklists
+  repeatedly failing models with exponential backoff before re-routing.
+- **Provider budget awareness**: classify model providers as `recurring` or
+  `limited` so equal-tier routing decisions prefer renewable subscription
+  capacity before consuming capped budgets.
+- **Router tests**: expanded coverage for orchestrator pinning, blacklist
+  backoff, provider budget selection, and low/medium/high complexity routing.
+
+### Changed
+
+- **Code-edit routing**: low-complexity edits now prefer fast/cheap models,
+  medium tasks prefer standard models, and escalated/high-complexity work moves
+  to premium tiers.
+- **Memory recall UX**: recalled memory is now folded into the system prompt
+  instead of being emitted as a visible custom message each turn, avoiding
+  duplicate on-screen memory boxes while preserving context for the model.
+- **Vendored pi assets**: build-time asset copying now mirrors pi theme/export
+  assets into both `dist/` and `src/` so source-checkout runs use the same
+  branded assets as published installs.
+
+### Fixed
+
+- **Think -> Write transition**: `plan_exit` now captures the extension API via
+  closure instead of relying on a fragile context cast, fixing mode-switch
+  failures when leaving think/spec/plan mode.
+- **Model failure recovery plumbing**: turn-end success/failure signals now feed
+  router blacklist state so repeated model failures can trigger reroutes.
+- **Provider-aware fallback recovery**: fallback chains and blacklist state now
+  key models by `provider/id`, so a failure on one provider does not suppress a
+  healthy provider exposing the same model id.
+- **Applied-model attribution**: router success/failure tracking now records the
+  model that actually passed `setModel()`, including fallback candidates.
+- **Headless memory recall**: recalled memory status updates now guard optional
+  UI access, so non-interactive runs can still receive memory context without
+  crashing.
+- **Release smoke on Windows**: release automation now prefers Git Bash over
+  WSL `bash`, smoke scripts resolve package paths without brittle `node -p
+  require(...)` detection, and failures surface with clearer guidance.
+- **Patch path safety**: `apply_patch` now rejects target paths and move targets
+  that escape the workspace root.
+
 ## [0.2.0] - 2026-06-14
 
 Standalone, sovereign release. PoleStar-X is now a single published package built

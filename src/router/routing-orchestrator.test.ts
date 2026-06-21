@@ -93,7 +93,7 @@ describe("RoutingOrchestrator", () => {
 			SESSION,
 		);
 		// Record failure for pinned model
-		orch.recordFailure("claude-3-5-haiku");
+		orch.recordFailure(mockModel("claude-3-5-haiku"));
 
 		const result = orch.route(
 			{ prompt: "Do X", turnCount: 3, previousFailures: 1, currentModel: mockModel("claude-3-5-haiku"), availableModels: [mockModel("claude-3-5-haiku"), mockModel("claude-3-5-opus")] },
@@ -133,7 +133,7 @@ describe("RoutingOrchestrator", () => {
 
 	it("falls back to all models if all are blacklisted", () => {
 		const orch = new RoutingOrchestrator(1);
-		orch.recordFailure("only-model");
+		orch.recordFailure(mockModel("only-model"));
 		const result = orch.route(
 			{ prompt: "Fix a bug", turnCount: 1, previousFailures: 1, availableModels: [mockModel("only-model")] },
 			SESSION,
@@ -170,5 +170,57 @@ describe("RoutingOrchestrator", () => {
 		);
 		expect(pinned.reason).toBe("user_pinned");
 		expect(pinned.model?.provider).toBe("openrouter");
+	});
+
+	it("does not blacklist another provider that exposes the same model id", () => {
+		const orch = new RoutingOrchestrator(1);
+		const failed = mockModel("gpt-4o", "provider-a");
+		const healthy = mockModel("gpt-4o", "provider-b");
+
+		orch.recordFailure(failed);
+
+		const result = orch.route(
+			{
+				prompt: "Design a retry strategy",
+				turnCount: 1,
+				previousFailures: 1,
+				availableModels: [failed, healthy],
+			},
+			SESSION,
+		);
+
+		expect(result.model?.provider).toBe("provider-b");
+	});
+
+	it("keeps a cross-provider pin when a different provider with the same id is blacklisted", () => {
+		const orch = new RoutingOrchestrator(1);
+		const failed = mockModel("gpt-4o", "provider-a");
+		const pinnedHealthy = mockModel("gpt-4o", "provider-b");
+
+		orch.route(
+			{
+				prompt: "Design a retry strategy",
+				turnCount: 1,
+				previousFailures: 0,
+				currentModel: undefined,
+				availableModels: [failed],
+			},
+			SESSION,
+		);
+		orch.recordFailure(failed);
+
+		const pinned = orch.route(
+			{
+				prompt: "Design a retry strategy",
+				turnCount: 2,
+				previousFailures: 0,
+				currentModel: pinnedHealthy,
+				availableModels: [failed, pinnedHealthy],
+			},
+			SESSION,
+		);
+
+		expect(pinned.reason).toBe("user_pinned");
+		expect(pinned.model?.provider).toBe("provider-b");
 	});
 });

@@ -86,7 +86,7 @@ function buildTiers(models: Model<any>[], getBudget?: (provider: string) => "rec
 
 function buildFallbackChain(primary: Model<any> | undefined, models: Model<any>[]): Model<any>[] {
 	const chain = primary ? [primary] : [];
-	const rest = models.filter((m) => !primary || (m !== primary && m.id !== primary.id));
+	const rest = models.filter((m) => !primary || m.provider !== primary.provider || m.id !== primary.id);
 
 	const groups = new Map<string, Model<any>[]>();
 	for (const m of rest) {

@@ -127,4 +127,18 @@ describe("modelRouter", () => {
 		expect(modelTierRank({ id: "claude-3-5-haiku" })).toBe(2);
 		expect(modelTierRank({ id: "some-random-model" })).toBe(3);
 	});
+
+	it("keeps same-id models from different providers in the fallback chain", () => {
+		const result = modelRouter.route({
+			prompt: "Design a new cache invalidation strategy",
+			turnCount: 0,
+			previousFailures: 0,
+			availableModels: [mockModel("gpt-4o", "provider-a"), mockModel("gpt-4o", "provider-b")],
+		});
+
+		expect(result.fallbackChain.map((m) => `${m.provider}/${m.id}`)).toEqual([
+			"provider-a/gpt-4o",
+			"provider-b/gpt-4o",
+		]);
+	});
 });
