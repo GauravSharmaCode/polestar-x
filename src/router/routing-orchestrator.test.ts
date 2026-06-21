@@ -36,7 +36,7 @@ describe("RoutingOrchestrator", () => {
 
 	it("pins the user model when they override the router choice", () => {
 		const orch = new RoutingOrchestrator(5);
-		// First route: router picks opus, stores lastRouterModelId = "claude-3-5-opus"
+		// First route: router picks opus, stores lastRouterModelKey = "anthropic/claude-3-5-opus"
 		orch.route(
 			{
 				prompt: "Fix a bug",
@@ -48,7 +48,7 @@ describe("RoutingOrchestrator", () => {
 			SESSION,
 		);
 
-		// User manually switches to haiku (ctx.currentModel differs from lastRouterModelId)
+		// User manually switches to haiku (ctx.currentModel differs from lastRouterModelKey)
 		const pinned = orch.route(
 			{
 				prompt: "Fix a bug",
