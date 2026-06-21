@@ -30,6 +30,8 @@ tui-debug.log
 # Agent/tools state
 .pi_config/
 .antigravitycli/
+.polestar/
+.superpowers/
 docs/superpowers/
 
 # Vendored assets mirrored in source-checkout
